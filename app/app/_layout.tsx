@@ -2,7 +2,10 @@ import { AppSettingsProvider, useAppSettings } from "@/contexts/AppSettingsConte
 import { EditorProvider } from "@/contexts/EditorContext";
 import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
 import { MachineRegistryProvider, useMachineRegistry } from "@/contexts/MachineRegistry";
-import MachineScope from "@/components/MachineScope";
+import { ConnectionHolder, ActiveConnectionProvider } from "@/contexts/MachineConnections";
+import { ReviewPromptProvider } from "@/contexts/ReviewPromptContext";
+import { SessionRegistryProvider } from "@/contexts/SessionRegistry";
+import { PluginProvider } from "@/plugins";
 import "@/plugins/load"; // Load all plugins
 import i18n, { getStoredLanguage } from "@/lib/i18n";
 // Sans fonts
@@ -318,14 +321,24 @@ function RootLayoutContent() {
 }
 
 function MachineHost() {
-  const { machines, activeMachineId } = useMachineRegistry();
+  const { machines } = useMachineRegistry();
   return (
     <View style={{ flex: 1 }}>
+      {/* One warm <ConnectionProvider> per machine — render null, never wrap the
+          router, so switching the active machine never reparents/remounts it. */}
       {machines.map((m) => (
-        <MachineScope key={m.id} target={m.target} isActive={m.id === activeMachineId}>
-          {m.id === activeMachineId ? <RootLayoutContent /> : null}
-        </MachineScope>
+        <ConnectionHolder key={m.id} machineId={m.id} target={m.target} />
       ))}
+      {/* The single router, fed the ACTIVE machine's connection. */}
+      <ActiveConnectionProvider>
+        <ReviewPromptProvider>
+          <PluginProvider>
+            <SessionRegistryProvider>
+              <RootLayoutContent />
+            </SessionRegistryProvider>
+          </PluginProvider>
+        </ReviewPromptProvider>
+      </ActiveConnectionProvider>
     </View>
   );
 }

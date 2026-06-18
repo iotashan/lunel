@@ -100,7 +100,7 @@ export interface PairedSession extends StoredSession {
   lastUsedAt: number;
 }
 
-interface ConnectionContextType {
+export interface ConnectionContextType {
   status: ConnectionStatus;
   sessionState: SessionState;
   sessionCode: string | null;
@@ -130,12 +130,12 @@ interface ConnectionContextType {
   setStreaming: (enabled: boolean) => void;
 }
 
-const ConnectionContext = createContext<ConnectionContextType | null>(null);
+export const ConnectionContext = createContext<ConnectionContextType | null>(null);
 let hasLoggedMissingConnectionProvider = false;
 
 const unavailableConnectionError = () => new Error('Connection context unavailable during app bootstrap');
 
-const fallbackConnectionContext: ConnectionContextType = {
+export const fallbackConnectionContext: ConnectionContextType = {
   status: 'disconnected',
   sessionState: 'idle',
   sessionCode: null,
