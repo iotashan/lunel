@@ -239,24 +239,51 @@ function normalizeGateway(input: string): string {
   }
 }
 
-function parseConnectPayload(value: string): { code: string } {
+type ConnectTarget =
+  | { kind: 'relay'; code: string }
+  | { kind: 'direct'; fqdn: string; port: number; secret: string; ip?: string };
+
+function parseConnectPayload(value: string): ConnectTarget {
   const raw = value.trim();
-  if (!raw) return { code: '' };
+  if (!raw) return { kind: 'relay', code: '' };
+
+  // Direct (Tailscale) pairing QR is JSON: {v,mode:'direct',fqdn,port,secret,ip?}
+  if (raw.startsWith('{')) {
+    try {
+      const obj = JSON.parse(raw) as Record<string, unknown>;
+      if (
+        obj.mode === 'direct' &&
+        typeof obj.secret === 'string' &&
+        typeof obj.port === 'number' &&
+        (typeof obj.fqdn === 'string' || typeof obj.ip === 'string')
+      ) {
+        return {
+          kind: 'direct',
+          fqdn: typeof obj.fqdn === 'string' ? obj.fqdn : '',
+          port: obj.port,
+          secret: obj.secret,
+          ip: typeof obj.ip === 'string' ? obj.ip : undefined,
+        };
+      }
+    } catch {
+      // not direct JSON; fall through to relay parsing
+    }
+  }
 
   const parts = raw.split(',').map((x) => x.trim()).filter(Boolean);
   if (parts.length >= 2) {
     const code = parts[parts.length - 1];
-    return { code };
+    return { kind: 'relay', code };
   }
 
   // Support URL payloads, e.g. lunel://connect?code=ABC or https://.../ABC
   try {
     const url = new URL(raw);
     const queryCode = url.searchParams.get('code')?.trim();
-    if (queryCode) return { code: queryCode };
+    if (queryCode) return { kind: 'relay', code: queryCode };
 
     const pathCode = url.pathname.split('/').filter(Boolean).pop()?.trim();
-    if (pathCode) return { code: pathCode };
+    if (pathCode) return { kind: 'relay', code: pathCode };
   } catch {
     // ignore URL parsing failures and continue with fallback parsing
   }
@@ -264,10 +291,10 @@ function parseConnectPayload(value: string): { code: string } {
   // Support plain text containing "...code=ABC..."
   const queryMatch = raw.match(/(?:^|[?&#,\s])code=([^&#,\s]+)/i);
   if (queryMatch?.[1]) {
-    return { code: decodeURIComponent(queryMatch[1]).trim() };
+    return { kind: 'relay', code: decodeURIComponent(queryMatch[1]).trim() };
   }
 
-  return { code: raw };
+  return { kind: 'relay', code: raw };
 }
 
 function toTerminalSessionState(state?: string, reason?: string): SessionState {
@@ -682,7 +709,7 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
 
   const connectToGatewayV2 = useCallback(async (
     gateway: string,
-    options?: { sessionPassword?: string | null; sessionCode?: string | null; generation?: number | null }
+    options?: { sessionPassword?: string | null; sessionCode?: string | null; generation?: number | null; directUrl?: string }
   ): Promise<void> => {
     const generation = ++connectionGenerationRef.current;
     const wsPassword = options?.sessionPassword ?? sessionPasswordRef.current;
@@ -703,6 +730,7 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
       sessionSecret: wsPassword,
       generation: options?.generation ?? reattachGenerationRef.current,
       role: 'app',
+      directUrl: options?.directUrl,
       debugLog: (message, ...args) => logger.info('connection', message, {
         args: args.map((value) => {
           if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || value == null) {
@@ -1310,6 +1338,43 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
     cleanupSockets(false);
 
     const parsed = parseConnectPayload(payload);
+
+    if (parsed.kind === 'direct') {
+      const host = parsed.fqdn || parsed.ip;
+      if (!host) {
+        logger.warn('connection', 'direct connect rejected: no fqdn/ip');
+        setSessionState('ended');
+        setStatus('error');
+        setError('Invalid direct pairing payload');
+        throw new Error('Invalid direct pairing payload');
+      }
+      const directUrl = `ws://${host}:${parsed.port}`;
+      logger.info('connection', 'connecting directly (Tailscale)', { host, port: parsed.port });
+      setSessionState('pending');
+      setStatus('connecting');
+      setError(null);
+      setSessionCode(null);
+      // No relay session code in direct mode — keeps the relay-only proxy config
+      // (guarded by sessionCodeRef) from running. The secret authenticates inside
+      // the handshake; it is never placed in the ws:// URL.
+      sessionCodeRef.current = null;
+      sessionPasswordRef.current = parsed.secret;
+      reattachGenerationRef.current = null;
+      gatewaysRef.current = [directUrl];
+      activeGatewayRef.current = directUrl;
+      try {
+        await connectToGatewayV2(directUrl, { sessionPassword: parsed.secret, directUrl });
+        return;
+      } catch (err) {
+        const lastError = err instanceof Error ? err : new Error('Direct connection failed');
+        logger.error('connection', 'direct connect failed', { host, error: lastError.message });
+        setSessionState('ended');
+        setStatus('error');
+        setError(lastError.message);
+        throw lastError;
+      }
+    }
+
     if (!parsed.code) {
       logger.warn('connection', 'connect rejected due to invalid code');
       setSessionState('ended');
