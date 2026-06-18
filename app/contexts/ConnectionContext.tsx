@@ -126,6 +126,8 @@ interface ConnectionContextType {
   sendData: (ns: string, action: string, payload?: Record<string, unknown>, timeoutMs?: number) => Promise<Response>;
   fireData: (ns: string, action: string, payload?: Record<string, unknown>) => void;
   onDataEvent: (handler: (message: Message) => void) => () => void;
+  // Pause/resume the CLI's high-frequency terminal render stream (battery).
+  setStreaming: (enabled: boolean) => void;
 }
 
 const ConnectionContext = createContext<ConnectionContextType | null>(null);
@@ -177,6 +179,7 @@ const fallbackConnectionContext: ConnectionContextType = {
   },
   fireData: () => {},
   onDataEvent: () => () => {},
+  setStreaming: () => {},
 };
 
 function describeWebSocketErrorEvent(event: unknown): Record<string, unknown> {
@@ -636,6 +639,13 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
   const sendData = useCallback((ns: string, action: string, payload?: Record<string, unknown>, timeoutMs?: number) => {
     return sendMessageV2(ns, action, payload, timeoutMs);
   }, [sendMessageV2]);
+
+  const setStreaming = useCallback((enabled: boolean) => {
+    // Best-effort battery control: tell the CLI to stop/resume the ~24fps
+    // terminal render frames. Uses the ref so it stays stable; no-ops/ignored
+    // when not connected or when the CLI predates terminal.setStreaming.
+    void sendControlRef.current?.('terminal', 'setStreaming', { enabled }).catch(() => {});
+  }, []);
 
   const fireData = useCallback((ns: string, action: string, payload: Record<string, unknown> = {}) => {
     const transport = v2TransportRef.current;
@@ -1555,8 +1565,13 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
             logger.info('connection', 'app returned active without in-memory session; skipping automatic reconnect');
           }
         }
+        // Resume the terminal render stream paused on background (CLI repaints
+        // from cached state). Best-effort; ignored when not connected.
+        void sendControlRef.current?.('terminal', 'setStreaming', { enabled: true }).catch(() => {});
         return;
       }
+      // Backgrounded/inactive: stop the ~24fps terminal stream to save battery.
+      void sendControlRef.current?.('terminal', 'setStreaming', { enabled: false }).catch(() => {});
       stopAllServers();
     });
 
@@ -1677,7 +1692,8 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
     sendData,
     fireData,
     onDataEvent,
-  }), [status, sessionState, sessionCode, capabilities, error, isReconnecting, interactionBlockReason, trackedProxyPorts, discoveredProxyPorts, connect, resumeSession, getStoredSession, getPairedSessions, revokePairedSession, removePairedSession, clearStoredSession, endSession, disconnect, refreshProxyState, trackProxyPort, untrackProxyPort, sendControl, sendData, fireData, onDataEvent]);
+    setStreaming,
+  }), [status, sessionState, sessionCode, capabilities, error, isReconnecting, interactionBlockReason, trackedProxyPorts, discoveredProxyPorts, connect, resumeSession, getStoredSession, getPairedSessions, revokePairedSession, removePairedSession, clearStoredSession, endSession, disconnect, refreshProxyState, trackProxyPort, untrackProxyPort, sendControl, sendData, fireData, onDataEvent, setStreaming]);
 
   return (
     <ConnectionContext.Provider value={value}>
