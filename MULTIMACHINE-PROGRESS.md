@@ -128,3 +128,11 @@ App: (a) global `MachineRegistryProvider` (machine list + activeMachineId) + one
   - **No fixes needed**: Branch is clean, nothing broken, no regressions.
   - **Checklist status**: Tasks (0)–(50) complete; (80) v1 complete (per-INACTIVE-MACHINE trigger lands with 60). (60)/(70) staged on planned feat/multi-machine-switcher branch — verifier will not auto-implement. (90) v2-deferred.
 - 2026-06-18 ~11:05 CDT (local session, ultracode): shipped task (80) terminal.setStreaming (CLI gate + app background pause) on this branch. For (60)/(70): ran a design workflow, then shipped the tsc-clean BUILDING BLOCKS (MachineRegistry, MachineScope, MachineSwitcher + parseConnectPayload/ConnectTarget export) on a SEPARATE branch feat/multi-machine-switcher -> draft PR #2 (based on this branch). The _layout/auth wiring + bootstrap/promotion + router-reparent + 5 global-singleton isolations are documented in MULTIMACHINE-PLAN.md and deferred to an on-device session (cannot be behaviorally verified here; a blind keystone rewrite would risk a non-rendering app). Known-good direct-single-machine branch (PR #1) untouched + still green.
+- 2026-06-18 17:08 UTC (cloud verifier): VERIFICATION RUN #11
+  - **cli typecheck**: PASS (0 errors) — clean.
+  - **app typecheck**: FAIL with 55 errors — identical count to all prior runs; all pre-existing on main. Zero new errors from this branch. Branch-touched files: lib/transport/v2.ts:414/475 and app/lunel-connect.tsx:384 — same 3 pre-existing errors, unchanged.
+  - **Security invariant V1**: No regression. No new code touching URL construction, secret handling, or logging since run #10.
+  - **Draft PR #1**: Open, draft, head SHA = 2c7efa4 (matches remote). PR body current and accurate. updated_at = 16:12 UTC.
+  - **Local session**: Last local commit 16:12 UTC (2c7efa4, ~56 min ago). 3-hour idle condition NOT met; no auto-implementation triggered.
+  - **No fixes needed**: Branch is clean, nothing broken, no regressions.
+  - **Checklist status**: Tasks (0)–(50) complete; (80) v1 complete. (60)/(70) staged on feat/multi-machine-switcher (PR #2) — verifier will not auto-implement on this branch. (90) v2-deferred. **Awaiting local session to resume task (60)/(70) wiring on feat/multi-machine-switcher.**
