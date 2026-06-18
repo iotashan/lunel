@@ -28,6 +28,11 @@ interface MachineRegistryContextType {
   setActive: (id: string) => void;
   /** Update a machine's display label (e.g. once capabilities.hostname is known). */
   setLabel: (id: string, label: string) => void;
+  /** True while pairing an ADDITIONAL machine (vs the primary). Source of truth for
+   * the connect screen — replaces a fragile route param across the drawer->stack push. */
+  addMode: boolean;
+  beginAdd: () => void;
+  endAdd: () => void;
 }
 
 // Bound memory: each machine keeps a warm socket + plugin subtree.
@@ -66,6 +71,7 @@ export function MachineRegistryProvider({ children }: { children: React.ReactNod
     { id: PRIMARY_MACHINE_ID, target: null, label: 'This machine', createdAt: Date.now() },
   ]);
   const [activeMachineId, setActiveMachineId] = useState<string | null>(PRIMARY_MACHINE_ID);
+  const [addMode, setAddMode] = useState(false);
 
   const addMachine = useCallback(
     (target: ConnectTarget, opts?: { activate?: boolean; label?: string }) => {
@@ -98,13 +104,16 @@ export function MachineRegistryProvider({ children }: { children: React.ReactNod
 
   const setActive = useCallback((id: string) => setActiveMachineId(id), []);
 
+  const beginAdd = useCallback(() => setAddMode(true), []);
+  const endAdd = useCallback(() => setAddMode(false), []);
+
   const setLabel = useCallback((id: string, label: string) => {
     setMachines((prev) => prev.map((m) => (m.id === id ? { ...m, label } : m)));
   }, []);
 
   const value = useMemo<MachineRegistryContextType>(
-    () => ({ machines, activeMachineId, addMachine, removeMachine, setActive, setLabel }),
-    [machines, activeMachineId, addMachine, removeMachine, setActive, setLabel],
+    () => ({ machines, activeMachineId, addMachine, removeMachine, setActive, setLabel, addMode, beginAdd, endAdd }),
+    [machines, activeMachineId, addMachine, removeMachine, setActive, setLabel, addMode, beginAdd, endAdd],
   );
 
   return <MachineRegistryContext.Provider value={value}>{children}</MachineRegistryContext.Provider>;

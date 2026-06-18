@@ -77,8 +77,7 @@ function CopyableCommand({ command, fonts, colors }: { command: string; fonts: R
 
 const LunelConnect = () => {
   const router = useRouter();
-  const { add: addParam } = useLocalSearchParams<{ add?: string }>();
-  const { addMachine, setActive } = useMachineRegistry();
+  const { addMachine, setActive, addMode, endAdd } = useMachineRegistry();
   const { colors, fonts, typography } = useTheme();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -167,10 +166,14 @@ const LunelConnect = () => {
   }, [permission, requestPermission, hasRequestedPermission]);
 
   useEffect(() => {
-    if (status === "connected" && capabilities) {
+    // In add-machine mode the active (machine-0) scope is already connected;
+    // don't bounce back to the workspace — stay so the user can pair another machine.
+    if (status === "connected" && capabilities && !addMode) {
       router.replace("/workspace");
     }
-  }, [status, capabilities, router]);
+  }, [status, capabilities, router, addMode]);
+  // Clear add-mode whenever the connect screen leaves, so a later pairing is normal.
+  useEffect(() => () => endAdd(), [endAdd]);
 
   useEffect(() => {
     const beatLoop = Animated.loop(
@@ -266,7 +269,7 @@ const LunelConnect = () => {
     setIsConnecting(true);
     setError(null);
     try {
-      if (addParam === '1') {
+      if (addMode) {
         // Add-a-machine flow (from the switcher): register a new machine so a
         // fresh MachineScope mounts + auto-connects, instead of reconnecting the
         // active scope. The primary/first connection takes the else branch.
@@ -276,6 +279,7 @@ const LunelConnect = () => {
         }
         const id = addMachine(target);
         setActive(id);
+        endAdd();
         hasActiveConnectAttemptRef.current = false;
         router.replace('/workspace');
         return;

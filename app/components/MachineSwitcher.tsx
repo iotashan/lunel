@@ -13,7 +13,7 @@ import { useMachineRegistry } from '@/contexts/MachineRegistry';
  */
 export default function MachineSwitcher({ onSwitch }: { onSwitch?: () => void }) {
   const { colors, fonts } = useTheme();
-  const { machines, activeMachineId, setActive, removeMachine } = useMachineRegistry();
+  const { machines, activeMachineId, setActive, removeMachine, beginAdd } = useMachineRegistry();
   const router = useRouter();
 
   if (machines.length < 1) return null; // show at N>=1 so Add-machine is reachable
@@ -60,8 +60,9 @@ export default function MachineSwitcher({ onSwitch }: { onSwitch?: () => void })
         style={styles.addRow}
         activeOpacity={0.7}
         onPress={() => {
+          beginAdd();
           onSwitch?.();
-          router.push({ pathname: '/lunel-connect', params: { add: '1' } } as any);
+          router.push('/lunel-connect' as any);
         }}
       >
         <Plus size={16} color={colors.fg.muted} strokeWidth={2} />
