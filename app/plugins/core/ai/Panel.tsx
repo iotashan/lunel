@@ -64,7 +64,13 @@ import Feather from "@expo/vector-icons/Feather";
 import Fontisto from "@expo/vector-icons/Fontisto";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import Foundation from "@expo/vector-icons/Foundation";
-import { Audio } from "expo-av";
+import {
+  useAudioRecorder,
+  useAudioRecorderState,
+  RecordingPresets,
+  AudioModule,
+  setAudioModeAsync,
+} from "expo-audio";
 import Svg, { Path } from "react-native-svg";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { MenuView } from "@react-native-menu/menu";
@@ -2792,7 +2798,12 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
 
   // Refs
   const inputRef = useRef<TextInput>(null);
-  const recordingRef = useRef<Audio.Recording | null>(null);
+  const audioRecorder = useAudioRecorder({
+    ...RecordingPresets.HIGH_QUALITY,
+    isMeteringEnabled: true,
+  });
+  const recorderState = useAudioRecorderState(audioRecorder, 100);
+  const isRecordingRef = useRef(false);
   const latestVoiceLevelRef = useRef(VOICE_WAVE_IDLE_LEVEL);
   const voiceWaveIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const messagesListRef = useRef<FlashListRef<any>>(null);
@@ -3965,30 +3976,40 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
     setVoiceWave(Array.from({ length: VOICE_WAVE_BAR_COUNT }, () => VOICE_WAVE_IDLE_LEVEL));
   }, []);
 
+  // Drive the equalizer/duration from real recorder metering while recording
+  useEffect(() => {
+    if (recorderState.isRecording) {
+      setVoiceDurationMs(recorderState.durationMillis ?? 0);
+      updateEqualizer(
+        typeof recorderState.metering === "number" ? recorderState.metering : undefined
+      );
+    } else {
+      latestVoiceLevelRef.current = VOICE_WAVE_IDLE_LEVEL;
+    }
+  }, [recorderState.isRecording, recorderState.durationMillis, recorderState.metering, updateEqualizer]);
+
   const stopRecording = useCallback(async (): Promise<string | null> => {
-    const recording = recordingRef.current;
-    if (!recording) return null;
-    recordingRef.current = null;
+    if (!isRecordingRef.current) return null;
+    isRecordingRef.current = false;
     if (voiceWaveIntervalRef.current) {
       clearInterval(voiceWaveIntervalRef.current);
       voiceWaveIntervalRef.current = null;
     }
     try {
-      await recording.stopAndUnloadAsync();
+      await audioRecorder.stop();
     } catch {
       // noop
     }
-    recording.setOnRecordingStatusUpdate(null);
-    const uri = recording.getURI();
+    const uri = audioRecorder.uri;
     try {
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
+      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
     } catch {
       // noop
     }
     resetEqualizer();
     setVoiceDurationMs(0);
     return uri;
-  }, [resetEqualizer]);
+  }, [audioRecorder, resetEqualizer]);
 
   const handleAttachment = useCallback(() => {
     setActiveSheet(null);
@@ -4482,32 +4503,19 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
     setActiveSheet(null);
     Keyboard.dismiss();
     try {
-      const permission = await Audio.requestPermissionsAsync();
+      const permission = await AudioModule.requestRecordingPermissionsAsync();
       if (!permission.granted) {
         setIsVoiceMode(false);
         Alert.alert(t('aiPanel.micPermTitle'), t('aiPanel.micPermDesc'));
         return;
       }
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
       });
-      const recording = new Audio.Recording();
-      recording.setProgressUpdateInterval(100);
-      recording.setOnRecordingStatusUpdate((status) => {
-        if (!status.isRecording) {
-          latestVoiceLevelRef.current = VOICE_WAVE_IDLE_LEVEL;
-          return;
-        }
-        setVoiceDurationMs(status.durationMillis ?? 0);
-        updateEqualizer(typeof status.metering === "number" ? status.metering : undefined);
-      });
-      await recording.prepareToRecordAsync({
-        ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
-        isMeteringEnabled: true,
-      } as Audio.RecordingOptions);
-      await recording.startAsync();
-      recordingRef.current = recording;
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record();
+      isRecordingRef.current = true;
       setVoiceDurationMs(0);
     } catch (err) {
       console.error("Voice recording start error:", err);
@@ -4517,9 +4525,9 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
     }
   }, [
     animateInputHeight,
+    audioRecorder,
     isVoiceBusy,
     resetEqualizer,
-    updateEqualizer,
   ]);
 
   const cancelVoiceMode = useCallback(async () => {
@@ -4597,12 +4605,12 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
         clearInterval(voiceWaveIntervalRef.current);
         voiceWaveIntervalRef.current = null;
       }
-      if (recordingRef.current) {
-        recordingRef.current.stopAndUnloadAsync().catch(() => {});
-        recordingRef.current = null;
+      if (isRecordingRef.current) {
+        isRecordingRef.current = false;
+        audioRecorder.stop().catch(() => {});
       }
     };
-  }, [clearScheduledScroll]);
+  }, [audioRecorder, clearScheduledScroll]);
 
   useEffect(() => {
     if (!pendingImage) {

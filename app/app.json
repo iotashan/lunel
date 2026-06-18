@@ -82,7 +82,8 @@
           }
         }
       ],
-      "./config-plugins/withMinIosDeploymentTarget"
+      "./config-plugins/withMinIosDeploymentTarget",
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true,
