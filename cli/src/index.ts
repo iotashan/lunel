@@ -83,6 +83,14 @@ const terminals = new Set<string>();
 let ptyProcess: ChildProcess | null = null;
 const ptyPendingSpawns = new Map<string, { resolve: () => void; reject: (err: Error) => void }>();
 
+// Battery optimization: the app sends terminal.setStreaming{enabled:false} when
+// it backgrounds (or, with multi-machine, when this machine is not focused) to
+// stop the ~24fps cell-grid 'state' frames. We cache the latest state per
+// terminal so we can repaint immediately on resume (the PTY only re-emits on
+// change). Per-CLI-connection flag — exactly one CLI process per machine.
+let terminalStreamingEnabled = true;
+const lastTerminalState = new Map<string, Message>();
+
 function getDefaultTerminalShell(): string {
   if (process.platform === "win32") {
     return process.env.COMSPEC || "C:\\Windows\\System32\\cmd.exe";
@@ -1258,6 +1266,21 @@ function emitAppEvent(msg: Message): void {
   }
 }
 
+function handleTerminalSetStreaming(payload: Record<string, unknown>): { enabled: boolean } {
+  const enabled = payload.enabled !== false; // default to enabled
+  const wasEnabled = terminalStreamingEnabled;
+  terminalStreamingEnabled = enabled;
+  // On resume, repaint immediately from the cached screen state for each live
+  // terminal — the PTY only re-emits 'state' on change, so without this the
+  // screen would stay stale until the next keystroke/output.
+  if (enabled && !wasEnabled) {
+    for (const msg of lastTerminalState.values()) {
+      emitAppEvent(msg);
+    }
+  }
+  return { enabled: terminalStreamingEnabled };
+}
+
 function emitEditorFileChanged(requestPath: string, mtimeMs: number, size: number): void {
   logWithTimestamp("editor-watch", "emitting fileChanged", { path: requestPath, mtime: mtimeMs, size });
   emitAppEvent({
@@ -1694,9 +1717,13 @@ async function ensurePtyProcess(): Promise<void> {
           scrollbackLength: event.scrollbackLength,
         },
       };
-      emitAppEvent(msg);
+      lastTerminalState.set(event.id, msg);
+      if (terminalStreamingEnabled) {
+        emitAppEvent(msg);
+      }
     } else if (event.event === "exit") {
       terminals.delete(event.id);
+      lastTerminalState.delete(event.id);
       const msg: Message = {
         v: 1,
         id: `evt-${Date.now()}`,
@@ -3011,6 +3038,9 @@ async function processMessage(message: Message): Promise<Response> {
             break;
           case "scroll":
             result = handleTerminalScroll(payload);
+            break;
+          case "setStreaming":
+            result = handleTerminalSetStreaming(payload);
             break;
           default:
             throw Object.assign(new Error(`Unknown action: ${ns}.${action}`), { code: "EINVAL" });
