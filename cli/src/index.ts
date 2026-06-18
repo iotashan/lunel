@@ -1101,7 +1101,9 @@ async function handleGitDiff(payload: Record<string, unknown>): Promise<Record<s
 
   const args = ["diff"];
   if (staged) args.push("--staged");
-  if (filepath) args.push(filepath);
+  // ponytail: `--` ends git options so a remote-supplied path (e.g. "--output=/etc/x")
+  // is treated as a pathspec, not a git flag — keeps git inside the same jail fs.* enforces.
+  if (filepath) args.push("--", filepath);
 
   const result = await runGit(args);
 
@@ -1135,6 +1137,9 @@ async function handleGitCheckout(payload: Record<string, unknown>): Promise<Reco
   const branch = payload.branch as string;
   const create = payload.create === true;
   if (!branch) throw Object.assign(new Error("branch is required"), { code: "EINVAL" });
+  // ponytail: reject leading "-" so a branch value can't smuggle a git option.
+  // (Can't use `--` here: `git checkout -- <x>` changes to file-restore semantics.)
+  if (branch.startsWith("-")) throw Object.assign(new Error("invalid branch name"), { code: "EINVAL" });
 
   const args = create ? ["checkout", "-b", branch] : ["checkout", branch];
   const result = await runGit(args);
@@ -1148,8 +1153,10 @@ async function handleGitCheckout(payload: Record<string, unknown>): Promise<Reco
 async function handleGitDeleteBranch(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
   const branch = payload.branch as string;
   if (!branch) throw Object.assign(new Error("branch is required"), { code: "EINVAL" });
+  // ponytail: reject leading "-" so a branch value can't smuggle a git option.
+  if (branch.startsWith("-")) throw Object.assign(new Error("invalid branch name"), { code: "EINVAL" });
 
-  const result = await runGit(["branch", "-d", branch]);
+  const result = await runGit(["branch", "-d", "--", branch]);
   if (result.code !== 0) {
     throw Object.assign(new Error(result.stderr || "git branch delete failed"), { code: "EGIT" });
   }
