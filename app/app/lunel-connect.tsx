@@ -140,8 +140,9 @@ const LunelConnect = () => {
 
   useEffect(() => {
     if (Platform.OS === "android") {
-      NavigationBar.setBackgroundColorAsync(BLACK);
-      NavigationBar.setButtonStyleAsync("light");
+      // Edge-to-edge is always on in SDK 56; the navigation bar background is
+      // transparent automatically, so only the button (icon) style is set here.
+      NavigationBar.setStyle("light");
     }
   }, []);
 
@@ -288,9 +289,9 @@ const LunelConnect = () => {
       {/* Upper — Camera */}
       <View style={styles.upper}>
         {permission?.granted && (
-          <Animated.View style={[StyleSheet.absoluteFillObject, { opacity: cameraOpacity }]}>
+          <Animated.View style={[StyleSheet.absoluteFill, { opacity: cameraOpacity }]}>
             <CameraView
-              style={StyleSheet.absoluteFillObject}
+              style={StyleSheet.absoluteFill}
               facing="back"
               onCameraReady={() => {
                 Animated.timing(cameraOpacity, {
@@ -328,7 +329,7 @@ const LunelConnect = () => {
               <Svg
                 width={width}
                 height={SCREEN_HEIGHT}
-                style={StyleSheet.absoluteFillObject}
+                style={StyleSheet.absoluteFill}
                 pointerEvents="none"
               >
                 <Path
@@ -381,7 +382,7 @@ const LunelConnect = () => {
                       t('lunelConnect.enterCodeDesc'),
                       [
                         { text: t('common.cancel'), style: "cancel" },
-                        { text: t('common.connect'), onPress: (code) => { if (code?.trim()) handleConnectWithCode(code.trim()); } },
+                        { text: t('common.connect'), onPress: (code?: string) => { if (code?.trim()) handleConnectWithCode(code.trim()); } },
                       ],
                       "plain-text",
                       "",

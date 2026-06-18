@@ -73,7 +73,16 @@
       ],
       "expo-asset",
       "expo-localization",
-      "expo-ios-scene-lifecycle-plugin"
+      "expo-ios-scene-lifecycle-plugin",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "16.4"
+          }
+        }
+      ],
+      "./config-plugins/withMinIosDeploymentTarget"
     ],
     "experiments": {
       "typedRoutes": true,

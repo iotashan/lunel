@@ -233,14 +233,14 @@ function RootLayoutContent() {
   useEffect(() => {
     if (Platform.OS !== "android") return;
 
+    // Edge-to-edge is always on in SDK 56, so the navigation bar background is
+    // transparent automatically; only the button (icon) style is configurable.
     if (isWorkspace) {
-      NavigationBar.setBackgroundColorAsync("transparent");
-      NavigationBar.setButtonStyleAsync("light");
+      NavigationBar.setStyle("light");
       return;
     }
 
-    NavigationBar.setBackgroundColorAsync(statusBarBg);
-    NavigationBar.setButtonStyleAsync(statusBarStyle === "light" ? "light" : "dark");
+    NavigationBar.setStyle(statusBarStyle === "light" ? "light" : "dark");
   }, [isWorkspace, statusBarBg, statusBarStyle]);
 
   useEffect(() => {
@@ -273,11 +273,7 @@ function RootLayoutContent() {
         style={{ flex: 1, backgroundColor: "transparent" }}
         edges={[]}
       >
-        <StatusBar
-          style={statusBarStyle}
-          backgroundColor="transparent"
-          translucent={true}
-        />
+        <StatusBar style={statusBarStyle} />
         <Stack
           screenOptions={{
             animation: "none",

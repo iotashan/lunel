@@ -11,8 +11,9 @@ export default function WorkspaceLayout() {
 
   useEffect(() => {
     if (Platform.OS === "android") {
-      NavigationBar.setBackgroundColorAsync("transparent");
-      NavigationBar.setButtonStyleAsync("light");
+      // Edge-to-edge is always on in SDK 56; the navigation bar background is
+      // transparent automatically, so only the button (icon) style is set here.
+      NavigationBar.setStyle("light");
     }
   }, []);
 

@@ -520,7 +520,11 @@ window.__lunelCreateCodeMirrorEditor = function createCodeMirrorEditor(options: 
       return { current: 0, total: 0 };
     }
 
-    const matches = Array.from(query.getCursor(view.state));
+    const cursor = query.getCursor(view.state);
+    const matches: { from: number; to: number }[] = [];
+    for (let next = cursor.next(); !next.done; next = cursor.next()) {
+      matches.push(next.value);
+    }
     if (matches.length === 0) {
       return { current: 0, total: 0 };
     }

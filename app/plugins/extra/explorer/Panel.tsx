@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as DocumentPicker from 'expo-document-picker';
-import { FlashList } from '@shopify/flash-list';
+import { FlashList, FlashListRef } from '@shopify/flash-list';
 import { useSessionRegistryActions } from '@/contexts/SessionRegistry';
 import {
   CloudOff,
@@ -488,7 +488,7 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
   const pendingRenameRef = useRef<{ fromPath: string; currentName: string } | null>(null);
   const uploadPickerInFlightRef = useRef(false);
   const uploadCancelRequestedRef = useRef(false);
-  const listRef = useRef<FlashList<ExplorerListItem> | null>(null);
+  const listRef = useRef<FlashListRef<ExplorerListItem> | null>(null);
   const codebaseRequestIdRef = useRef(0);
   const repoFileSearchRequestIdRef = useRef(0);
   const directoryCountRequestIdRef = useRef(0);
@@ -1255,7 +1255,7 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
         undefined,
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Create', onPress: (value) => { void handleCreateSubmit(value ?? '', type); } },
+          { text: 'Create', onPress: (value?: string) => { void handleCreateSubmit(value ?? '', type); } },
         ],
         'plain-text',
         '',
@@ -1327,7 +1327,7 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
         undefined,
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Rename', onPress: (value) => { void handleRenameSubmit(value ?? ''); } },
+          { text: 'Rename', onPress: (value?: string) => { void handleRenameSubmit(value ?? ''); } },
         ],
         'plain-text',
         currentName,
@@ -1530,7 +1530,7 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     paddingHorizontal: spacing[4],
-    paddingBottom: spacing[18],
+    paddingBottom: (spacing as unknown as Record<number, number>)[18],
   };
   const searchStateTextStyle = {
     marginTop: spacing[3],
@@ -1617,7 +1617,6 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
             </TouchableOpacity>
             <MenuView
               shouldOpenOnLongPress={false}
-              preferredMenuAnchorPosition="bottom"
               onPressAction={({ nativeEvent }) => {
                 if (nativeEvent.event === 'new-file') {
                   promptCreate('file');
@@ -1937,7 +1936,7 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
                     justifyContent: 'center',
                     paddingHorizontal: spacing[4],
                     paddingVertical: spacing[8],
-                    paddingBottom: spacing[18],
+                    paddingBottom: (spacing as unknown as Record<number, number>)[18],
                     gap: spacing[3],
                   }}
                 >
@@ -2099,7 +2098,6 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
                 ) : (
                   <FlashList
                     data={currentDirSearchResults}
-                    estimatedItemSize={56}
                     contentContainerStyle={{ paddingTop: spacing[2], paddingBottom: spacing[6] }}
                     keyExtractor={(item) => item.path}
                     renderItem={({ item }) => (
@@ -2147,7 +2145,6 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
               ) : (
                 <FlashList
                   data={repoFileSearchResults}
-                  estimatedItemSize={56}
                   contentContainerStyle={{ paddingTop: spacing[2], paddingBottom: spacing[6] }}
                   keyExtractor={(item) => item.path}
                   renderItem={({ item }) => (
@@ -2216,7 +2213,6 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
           <FlashList
             ref={listRef}
             data={loading || error ? [] : displayItems}
-            estimatedItemSize={44}
             ListEmptyComponent={null}
             ItemSeparatorComponent={null}
             contentContainerStyle={{ paddingTop: spacing[2], paddingBottom: spacing[6] }}

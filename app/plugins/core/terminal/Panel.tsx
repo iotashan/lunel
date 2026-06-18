@@ -801,6 +801,7 @@ const TerminalToolbar = memo(
     onSendQuickInput: () => void;
     quickInputRef: React.RefObject<TextInput | null>;
   }) => {
+    const { t } = useTranslation();
     const toolbarVerticalPadding = keyboardVisible ? 6 : 8;
     const [quickInputFocused, setQuickInputFocused] = useState(false);
     const micBusySpinSV = useSharedValue(0);
@@ -1428,10 +1429,11 @@ export default function TerminalPanel({
       }
 
       if (state.title) {
+        const nextTitle = state.title;
         setTabs((prev) =>
           prev.map((tab) =>
-            tab.terminalId === terminalId && tab.title !== state.title
-              ? { ...tab, title: state.title }
+            tab.terminalId === terminalId && tab.title !== nextTitle
+              ? { ...tab, title: nextTitle }
               : tab,
           ),
         );
