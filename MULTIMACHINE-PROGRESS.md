@@ -52,3 +52,12 @@ App: (a) global `MachineRegistryProvider` (machine list + activeMachineId) + one
 - 2026-06-18 ~02:35 CDT (local session): 2nd-model review of the app diff caught a real security gap — direct sessions were indistinguishable from relay sessions, so relay lifecycle code (reattach, manager health probe, paired-session persistence) could send the pairing secret to manager.lunel.dev. Fixed: added directModeRef gating all manager-contacting paths; parseConnectPayload now rejects direct-shaped-but-invalid JSON instead of falling through to relay (?code=) parsing; stopped logging the raw connect payload; gated startPortServers on relay mode; direct connect now tries fqdn then the 100.x ip. App tsc: still 0 new errors. Verified endSession (in-session msg, not manager) + revoke (only persisted paired sessions, which direct never creates) also don't leak the secret. Pushed 83a1873.
   - **Peer review value note:** the CLI-diff review caught secret-echo-in-logs + the post-secure close leak; the app-diff review caught the relay-lifecycle secret-leak (the big one) + parse fallthrough. All accepted & fixed. Rejected nothing material; deferred V2 replay-hardening + TOFU + V5 to v2 with rationale.
   - **Direct SINGLE-machine mode is complete, typecheck-clean (0 new errors), and twice peer-reviewed.** Multi-machine (60/70) remains staged for a reviewed session (global app-state refactor; user's standing constraint + no behavioral verification available here).
+- 2026-06-18 08:07 UTC (cloud verifier): VERIFICATION RUN #2
+  - **cli typecheck**: PASS (0 errors) — clean.
+  - **app typecheck**: FAIL with 55 errors — all pre-existing on main; confirmed 0 new errors from this branch. The only errors in our changed files are lib/transport/v2.ts:414/475 (the same 2 pre-existing errors from run #1).
+  - **SECURITY-DIRECT-MODE.md**: EXISTS — task (10) fully complete. CONFIRMED.
+  - **Security invariant V1**: No regression detected. Secret never in URL, never in logs.
+  - **Draft PR #1**: Open, draft, head SHA = dedee58 (latest commit), mergeable_state = clean.
+  - **Local session**: Active — last commit 40 min ago (07:27 UTC). 3-hour idle condition NOT met; no auto-implementation triggered.
+  - **No fixes needed**: Branch is clean; nothing broken; no new regressions.
+  - **Checklist status**: Tasks (0)–(50) complete. (60)/(70) explicitly staged — verifier WILL NOT auto-implement per local session's standing instruction. (80)/(90) deferred to v2.
