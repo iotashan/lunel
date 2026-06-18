@@ -73,7 +73,6 @@
       ],
       "expo-asset",
       "expo-localization",
-      "expo-ios-scene-lifecycle-plugin",
       [
         "expo-build-properties",
         {
