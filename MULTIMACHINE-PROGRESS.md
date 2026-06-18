@@ -61,3 +61,11 @@ App: (a) global `MachineRegistryProvider` (machine list + activeMachineId) + one
   - **Local session**: Active — last commit 40 min ago (07:27 UTC). 3-hour idle condition NOT met; no auto-implementation triggered.
   - **No fixes needed**: Branch is clean; nothing broken; no new regressions.
   - **Checklist status**: Tasks (0)–(50) complete. (60)/(70) explicitly staged — verifier WILL NOT auto-implement per local session's standing instruction. (80)/(90) deferred to v2.
+- 2026-06-18 09:08 UTC (cloud verifier): VERIFICATION RUN #3
+  - **cli typecheck**: PASS (0 errors) — clean.
+  - **app typecheck**: FAIL with 55 errors — identical count to run #2; all pre-existing on main. Zero new errors from this branch. The only errors in branch-touched files remain lib/transport/v2.ts:414/475 (same 2 pre-existing errors from prior runs) and app/lunel-connect.tsx:384 (pre-existing).
+  - **Security invariant V1**: No regression. No new code touching URL construction or secret handling since run #2.
+  - **Draft PR #1**: Open, draft, head SHA = 2753701 (matches remote), PR body current and accurate.
+  - **Local session**: No new commits since run #2 (last local commit ~07:27 UTC, ~1h 40m ago). 3-hour idle condition NOT met; no auto-implementation triggered.
+  - **No fixes needed**: Branch is clean, nothing broken, no regressions.
+  - **Checklist status**: Tasks (0)–(50) complete. (60)/(70) explicitly staged per local session's standing instruction — verifier will not auto-implement. (80)/(90) v2-deferred.
