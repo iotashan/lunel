@@ -5,7 +5,7 @@ import InputModal from "@/components/InputModal";
 import { StatusBar } from "expo-status-bar";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { AlertCircle, ArrowLeft, ArrowRight, Info, LoaderCircle, QrCode, Terminal, X } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -35,7 +35,8 @@ import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import * as NavigationBar from "expo-navigation-bar";
 import Svg, { Path, Rect } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useConnection } from "../contexts/ConnectionContext";
+import { useConnection, parseConnectPayload } from "../contexts/ConnectionContext";
+import { useMachineRegistry } from "../contexts/MachineRegistry";
 import { useTranslation } from "react-i18next";
 import ReAnimated, { useAnimatedStyle, useSharedValue, withSpring, withTiming, runOnJS } from "react-native-reanimated";
 import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
@@ -76,6 +77,8 @@ function CopyableCommand({ command, fonts, colors }: { command: string; fonts: R
 
 const LunelConnect = () => {
   const router = useRouter();
+  const { add: addParam } = useLocalSearchParams<{ add?: string }>();
+  const { addMachine, setActive } = useMachineRegistry();
   const { colors, fonts, typography } = useTheme();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -263,6 +266,20 @@ const LunelConnect = () => {
     setIsConnecting(true);
     setError(null);
     try {
+      if (addParam === '1') {
+        // Add-a-machine flow (from the switcher): register a new machine so a
+        // fresh MachineScope mounts + auto-connects, instead of reconnecting the
+        // active scope. The primary/first connection takes the else branch.
+        const target = parseConnectPayload(trimmedCode);
+        if (target.kind === 'relay' && !target.code) {
+          throw new Error(t('lunelConnect.errorConnectionFailed'));
+        }
+        const id = addMachine(target);
+        setActive(id);
+        hasActiveConnectAttemptRef.current = false;
+        router.replace('/workspace');
+        return;
+      }
       await connect(trimmedCode);
       hasActiveConnectAttemptRef.current = false;
     } catch (err) {

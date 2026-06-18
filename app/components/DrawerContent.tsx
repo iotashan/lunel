@@ -8,6 +8,7 @@ import { gPI } from "@/plugins";
 import { usePlugins } from "@/plugins/context";
 import InfoSheet from "@/components/InfoSheet";
 import InputModal from "@/components/InputModal";
+import MachineSwitcher from "@/components/MachineSwitcher";
 import { DrawerContentComponentProps, useDrawerStatus } from "expo-router/drawer";
 import * as Haptics from "expo-haptics";
 import { useTranslation } from "react-i18next";
@@ -593,6 +594,7 @@ export default function DrawerContent(props: DrawerContentComponentProps) {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg.base }}>
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <MachineSwitcher onSwitch={() => props.navigation.closeDrawer()} />
 
         {!shouldHideSearchAndSessions ? (
           <>
