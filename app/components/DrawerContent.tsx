@@ -8,7 +8,7 @@ import { gPI } from "@/plugins";
 import { usePlugins } from "@/plugins/context";
 import InfoSheet from "@/components/InfoSheet";
 import InputModal from "@/components/InputModal";
-import { DrawerContentComponentProps, useDrawerStatus } from "@react-navigation/drawer";
+import { DrawerContentComponentProps, useDrawerStatus } from "expo-router/drawer";
 import * as Haptics from "expo-haptics";
 import { useTranslation } from "react-i18next";
 import Ionicons from "@expo/vector-icons/Ionicons";

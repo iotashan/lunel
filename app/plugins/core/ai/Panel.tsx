@@ -68,7 +68,7 @@ import { Audio } from "expo-av";
 import Svg, { Path } from "react-native-svg";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { MenuView } from "@react-native-menu/menu";
-import { useDrawerStatus } from "@react-navigation/drawer";
+import { useDrawerStatus } from "expo-router/drawer";
 import { innerApi } from "../../innerApi";
 import { PluginPanelProps } from "../../types";
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");

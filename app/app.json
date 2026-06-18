@@ -72,7 +72,8 @@
         }
       ],
       "expo-asset",
-      "expo-localization"
+      "expo-localization",
+      "expo-ios-scene-lifecycle-plugin"
     ],
     "experiments": {
       "typedRoutes": true,

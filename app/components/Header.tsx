@@ -1,6 +1,6 @@
 import { ThemeColors, typography } from "@/constants/themes";
 import { usePlugins } from "@/plugins/context";
-import { DrawerActions, useNavigation } from "@react-navigation/native";
+import { DrawerActions, useNavigation } from "expo-router/react-navigation";
 import * as Haptics from "expo-haptics";
 import { Plus, ChevronLeft } from "lucide-react-native";
 import React, { memo, useCallback, useEffect, useRef, useState } from "react";
