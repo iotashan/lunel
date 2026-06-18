@@ -74,14 +74,16 @@ export function MachineRegistryProvider({ children }: { children: React.ReactNod
   );
 
   const removeMachine = useCallback((id: string) => {
-    setMachines((prev) => {
-      const next = prev.filter((m) => m.id !== id);
-      // If we removed the active machine, fall back to the most recent remaining
-      // one (or null → back to the connect/auth screen).
-      setActiveMachineId((cur) => (cur === id ? (next.length ? next[next.length - 1].id : null) : cur));
-      return next;
+    setMachines((prev) => prev.filter((m) => m.id !== id));
+    // If we removed the active machine, fall back to the most recent remaining
+    // one (or null → back to the connect/auth screen). Computed from the current
+    // list rather than nesting a setter inside the setMachines updater.
+    setActiveMachineId((cur) => {
+      if (cur !== id) return cur;
+      const remaining = machines.filter((m) => m.id !== id);
+      return remaining.length ? remaining[remaining.length - 1].id : null;
     });
-  }, []);
+  }, [machines]);
 
   const setActive = useCallback((id: string) => setActiveMachineId(id), []);
 
