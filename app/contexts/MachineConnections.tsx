@@ -26,6 +26,7 @@ const connStore = {
   values: new Map<string, ConnectionContextType>(),
   listeners: new Map<string, Set<Listener>>(),
   set(id: string, v: ConnectionContextType) {
+    if (this.values.get(id) === v) return;
     this.values.set(id, v);
     this.listeners.get(id)?.forEach((l) => l());
   },

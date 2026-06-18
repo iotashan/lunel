@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, useRef } from 'react';
 import type { ConnectTarget } from '@/contexts/ConnectionContext';
 
 // A paired developer machine. The registry holds NO sockets — each machine's
@@ -72,6 +72,10 @@ export function MachineRegistryProvider({ children }: { children: React.ReactNod
   ]);
   const [activeMachineId, setActiveMachineId] = useState<string | null>(PRIMARY_MACHINE_ID);
   const [addMode, setAddMode] = useState(false);
+  // Mirror of machines for identity-stable callbacks (avoids re-creating
+  // removeMachine on every list change, which would bust the value memo).
+  const machinesRef = useRef(machines);
+  machinesRef.current = machines;
 
   const addMachine = useCallback(
     (target: ConnectTarget, opts?: { activate?: boolean; label?: string }) => {
@@ -93,14 +97,13 @@ export function MachineRegistryProvider({ children }: { children: React.ReactNod
     if (id === PRIMARY_MACHINE_ID) return; // the primary machine is permanent
     setMachines((prev) => prev.filter((m) => m.id !== id));
     // If we removed the active machine, fall back to the most recent remaining
-    // one (or null → back to the connect/auth screen). Computed from the current
-    // list rather than nesting a setter inside the setMachines updater.
+    // one (primary is permanent, so there is always a fallback).
     setActiveMachineId((cur) => {
       if (cur !== id) return cur;
-      const remaining = machines.filter((m) => m.id !== id);
-      return remaining.length ? remaining[remaining.length - 1].id : null;
+      const remaining = machinesRef.current.filter((m) => m.id !== id);
+      return remaining.length ? remaining[remaining.length - 1].id : PRIMARY_MACHINE_ID;
     });
-  }, [machines]);
+  }, []);
 
   const setActive = useCallback((id: string) => setActiveMachineId(id), []);
 
