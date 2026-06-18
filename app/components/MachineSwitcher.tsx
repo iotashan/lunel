@@ -16,7 +16,7 @@ export default function MachineSwitcher({ onSwitch }: { onSwitch?: () => void })
   const { machines, activeMachineId, setActive, removeMachine } = useMachineRegistry();
   const router = useRouter();
 
-  if (machines.length <= 1) return null;
+  if (machines.length < 1) return null; // show at N>=1 so Add-machine is reachable
 
   return (
     <View style={styles.container}>
