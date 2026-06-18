@@ -34,3 +34,14 @@ App: (a) global `MachineRegistryProvider` (machine list + activeMachineId) + one
 
 ## Log
 - 2026-06-18 ~01:52 CDT (local session): branch created; Notion project "Lunel Multi-Machine" + 9 tasks under milestone M1; V4 git fix applied. Next: commit + push + draft PR, then cli direct listener.
+- 2026-06-18 07:05 UTC (cloud verifier): VERIFICATION RUN #1
+  - **cli typecheck**: PASS (zero errors)
+  - **app typecheck**: FAIL — but ALL errors are pre-existing on main; diff against main shows zero new errors introduced by this branch. Not a regression.
+  - **Draft PR**: #1 open and current (https://github.com/iotashan/lunel/pull/1)
+  - **Local session activity**: last commit 12 min ago (06:52 UTC), session active — no feature takeover triggered.
+  - **Security invariant check**: no new code on branch yet that touches ws:// URLs or auth paths; V4 git fix confirmed in git log.
+  - **Gaps/notes for local session**:
+    - SECURITY-DIRECT-MODE.md (threat model doc) is still pending — task (10) not fully done until that file exists.
+    - app typecheck has ~80 pre-existing errors on main; when writing new app code for tasks (50)-(70), use `any` sparingly and aim not to increase the error count.
+    - `lib/transport/v2.ts` lines 407 and 468 have two pre-existing null/undefined type errors on main — be aware when extending that file for direct-mode.
+    - No feature code yet; all tasks (20)-(90) open and unclaimed.
