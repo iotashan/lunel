@@ -14,7 +14,7 @@ try {
   });
 }
 
-const DEFAULT_GATEWAY_WS_URL = 'wss://gateway.lunel.dev';
+const DEFAULT_GATEWAY_WS_URL = process.env.EXPO_PUBLIC_LUNEL_GATEWAY || 'wss://gateway.lunel.dev';
 
 // ============================================================================
 // Types

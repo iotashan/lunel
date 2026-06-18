@@ -133,8 +133,8 @@ export function buildSessionV2WsUrl(
   password: string,
   generation?: number | null,
 ): string {
-  const wsBase = gatewayUrl.replace(/^https:/, 'wss:');
-  if (!wsBase.startsWith('wss://')) {
+  const wsBase = gatewayUrl.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
+  if (!wsBase.startsWith('wss://') && !wsBase.startsWith('ws://')) {
     throw new Error('Gateway URL must use https://');
   }
   const query = new URLSearchParams({ password });

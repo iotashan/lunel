@@ -6,8 +6,8 @@ import { configureProxy, startPortServers, stopAllServers } from '@/lib/proxySer
 import { logger } from '@/lib/logger';
 import { V2SessionTransport } from '@/lib/transport/v2';
 
-const DEFAULT_GATEWAY = 'wss://gateway.lunel.dev';
-const MANAGER_URL = 'https://manager.lunel.dev';
+const DEFAULT_GATEWAY = process.env.EXPO_PUBLIC_LUNEL_GATEWAY || 'wss://gateway.lunel.dev';
+const MANAGER_URL = process.env.EXPO_PUBLIC_LUNEL_MANAGER || 'https://manager.lunel.dev';
 const LAST_SESSION_STORAGE_KEY = 'lunel_last_session';
 const LAST_SESSION_FALLBACK_STORAGE_KEY = '@lunel_last_session_fallback';
 const PAIRED_SESSIONS_STORAGE_KEY = 'lunel_paired_sessions';
@@ -215,13 +215,29 @@ function shouldLogRequest(ns: string, action: string): boolean {
   return true;
 }
 
+function isLocalHostname(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  return h === 'localhost' || h === '127.0.0.1' || h === '::1' || h === '[::1]';
+}
+
 function normalizeGateway(input: string): string {
   const raw = input.trim();
   if (!raw) return DEFAULT_GATEWAY;
 
   const lower = raw.toLowerCase();
-  if (lower.startsWith('ws://') || lower.startsWith('http://')) {
-    throw new Error('Insecure gateway protocol is not allowed; use wss:// or https://');
+  const insecure = lower.startsWith('ws://') || lower.startsWith('http://');
+  const parseable = /^[a-z]+:\/\//i.test(raw) ? raw : `wss://${raw}`;
+  let probe: URL;
+  try { probe = new URL(parseable); } catch { throw new Error('Invalid gateway URL'); }
+
+  // Plaintext ws://localhost / http://localhost is allowed for local relay
+  // testing; any non-local host must use wss://.
+  if (insecure) {
+    if (!isLocalHostname(probe.hostname)) {
+      throw new Error('Insecure gateway protocol is not allowed; use wss:// or https://');
+    }
+    const lpath = probe.pathname === '/' ? '' : probe.pathname.replace(/\/+$/, '');
+    return `ws://${probe.host}${lpath}`;
   }
 
   const asWss = lower.startsWith('https://')
@@ -958,7 +974,7 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
   }, [clearPendingRequests, clearStoredSession, generateId, savePairedSession, sendMessageV2]);
 
   const assembleWithCode = useCallback(async (code: string): Promise<AssembleResult> => {
-    const wsUrl = `${MANAGER_URL.replace(/^https:/, 'wss:')}/v2/assemble?code=${encodeURIComponent(code)}&role=app`;
+    const wsUrl = `${MANAGER_URL.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:')}/v2/assemble?code=${encodeURIComponent(code)}&role=app`;
     const healthUrl = new URL('/health', MANAGER_URL).toString();
 
     try {
@@ -1595,6 +1611,9 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
       if (directModeRef.current) {
         return;
       }
+      // A localhost manager (local relay testing) is always reachable; skip the
+      // recurring cleartext-http probe so it never falsely flips us offline.
+      try { if (isLocalHostname(new URL(MANAGER_URL).hostname)) return; } catch { /* ignore */ }
       if (manualDisconnectRef.current || !sessionPasswordRef.current) {
         return;
       }
