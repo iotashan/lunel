@@ -29,8 +29,9 @@ App: (a) global `MachineRegistryProvider` (machine list + activeMachineId) + one
 - [x] (50) app: direct-mode connect path (parseConnectPayload union + ws:// dial; directUrl on transport) — DONE, 0 new tsc errors
 - [ ] (60) app: MachineRegistry + per-machine MachineScope (provider-tree reorg) — STAGED FOR REVIEW (see note below)
 - [ ] (70) app: machine switcher UI + per-machine isolation check — depends on (60)
-- [ ] (80) protocol: backgrounded stream pause/resume (v2-deferrable)
+- [x] (80) terminal.setStreaming pause/resume — CLI gate at the state-emit choke point + repaint-on-resume; app exposes setStreaming() + pauses on background/resumes on foreground. v1 DONE (0 new tsc errors). Per-INACTIVE-MACHINE trigger lands with (60).
 - [ ] (90) test: end-to-end verification
+- 60/70 full implementation plan: see MULTIMACHINE-PLAN.md (validated by design workflow).
 
 ## Log
 - 2026-06-18 ~01:52 CDT (local session): branch created; Notion project "Lunel Multi-Machine" + 9 tasks under milestone M1; V4 git fix applied. Next: commit + push + draft PR, then cli direct listener.
@@ -117,3 +118,4 @@ App: (a) global `MachineRegistryProvider` (machine list + activeMachineId) + one
   - **Local session**: Last local commit 07:27 UTC (dedee58, ~7h 41m ago). Idle >3h; task (60) is explicitly blocked from auto-implementation by local session's standing instruction. No auto-implementation triggered.
   - **No fixes needed**: Branch is clean, nothing broken, no regressions.
   - **Checklist status**: Tasks (0)–(50) complete. (60)/(70) staged, explicitly blocked from auto-implementation. (80)/(90) v2-deferred. **Awaiting local session to resume task (60) — MachineRegistry + per-machine MachineScope.**
+- 2026-06-18 ~10:55 CDT (local session, user back + ultracode): ran a 4-agent design workflow to de-risk 60/70; shipped task (80) terminal.setStreaming (CLI gate + app background pause), 0 new tsc errors. Wrote MULTIMACHINE-PLAN.md (validated 60/70 spec). Next: implement 60/70 on a SEPARATE branch (feat/multi-machine-switcher) so the unverifiable global refactor cannot break the known-good direct-single-machine branch.
