@@ -60,8 +60,8 @@ export default function MachineSwitcher({ onSwitch }: { onSwitch?: () => void })
         style={styles.addRow}
         activeOpacity={0.7}
         onPress={() => {
-          router.push('/lunel-connect?add=1' as any);
           onSwitch?.();
+          router.push({ pathname: '/lunel-connect', params: { add: '1' } } as any);
         }}
       >
         <Plus size={16} color={colors.fg.muted} strokeWidth={2} />
