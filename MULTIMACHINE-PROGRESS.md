@@ -119,3 +119,11 @@ App: (a) global `MachineRegistryProvider` (machine list + activeMachineId) + one
   - **No fixes needed**: Branch is clean, nothing broken, no regressions.
   - **Checklist status**: Tasks (0)–(50) complete. (60)/(70) staged, explicitly blocked from auto-implementation. (80)/(90) v2-deferred. **Awaiting local session to resume task (60) — MachineRegistry + per-machine MachineScope.**
 - 2026-06-18 ~10:55 CDT (local session, user back + ultracode): ran a 4-agent design workflow to de-risk 60/70; shipped task (80) terminal.setStreaming (CLI gate + app background pause), 0 new tsc errors. Wrote MULTIMACHINE-PLAN.md (validated 60/70 spec). Next: implement 60/70 on a SEPARATE branch (feat/multi-machine-switcher) so the unverifiable global refactor cannot break the known-good direct-single-machine branch.
+- 2026-06-18 16:08 UTC (cloud verifier): VERIFICATION RUN #10
+  - **cli typecheck**: PASS (0 errors) — clean.
+  - **app typecheck**: FAIL with 55 errors — identical count to all prior runs; all pre-existing on main. Zero new errors from this branch. Branch-touched files: lib/transport/v2.ts:414/475 and app/lunel-connect.tsx:384 — same 3 pre-existing errors, unchanged.
+  - **Security invariant V1**: No regression. No new code touching URL construction or secret handling since run #9.
+  - **Draft PR #1**: Open, draft, head SHA = acdc476 (matches remote). Updated PR body to reflect task (80) v1 complete.
+  - **Local session**: Active — shipped 3 commits after run #9 (tasks 80 + PLAN.md doc). 3-hour idle condition NOT met.
+  - **No fixes needed**: Branch is clean, nothing broken, no regressions.
+  - **Checklist status**: Tasks (0)–(50) complete; (80) v1 complete (per-INACTIVE-MACHINE trigger lands with 60). (60)/(70) staged on planned feat/multi-machine-switcher branch — verifier will not auto-implement. (90) v2-deferred.
