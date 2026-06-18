@@ -85,3 +85,11 @@ App: (a) global `MachineRegistryProvider` (machine list + activeMachineId) + one
   - **Local session**: Last local commit 07:27 UTC (dedee58, ~3h 41m ago). **3-hour idle condition MET.** However, the next unchecked task in order is (60), which the local session explicitly prohibited the verifier from auto-implementing ("Verifier: please do NOT auto-implement (60); keep it staged"). No auto-implementation triggered.
   - **No fixes needed**: Branch is clean, nothing broken, no regressions.
   - **Checklist status**: Tasks (0)–(50) complete. (60)/(70) staged, explicitly blocked from auto-implementation. (80)/(90) v2-deferred. **Awaiting local session to resume task (60) — MachineRegistry + per-machine MachineScope.**
+- 2026-06-18 12:08 UTC (cloud verifier): VERIFICATION RUN #6
+  - **cli typecheck**: PASS (0 errors) — clean.
+  - **app typecheck**: FAIL with 55 errors — identical count to all prior runs; all pre-existing on main. Zero new errors from this branch. Branch-touched files unchanged: lib/transport/v2.ts:414/475 and app/lunel-connect.tsx:384 — same 3 pre-existing errors.
+  - **Security invariant V1**: No regression. No new code since run #5.
+  - **Draft PR #1**: Open, draft, head SHA = c4f87a3 (matches remote). PR body current and accurate.
+  - **Local session**: Last local commit 07:27 UTC (dedee58, ~4h 41m ago). Idle >3h; however task (60) is explicitly blocked from auto-implementation by local session's standing instruction. No auto-implementation triggered.
+  - **No fixes needed**: Branch is clean, nothing broken, no regressions.
+  - **Checklist status**: Tasks (0)–(50) complete. (60)/(70) staged, explicitly blocked from auto-implementation. (80)/(90) v2-deferred. **Awaiting local session to resume task (60) — MachineRegistry + per-machine MachineScope.**
