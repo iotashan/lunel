@@ -153,6 +153,16 @@ App: (a) global `MachineRegistryProvider` (machine list + activeMachineId) + one
   - **Local session**: Last local commit 16:12 UTC (2c7efa4, ~2h 56m ago). 3-hour idle condition NOT MET (just under threshold); no auto-implementation triggered.
   - **No fixes needed**: Branch is clean, nothing broken, no regressions.
   - **Checklist status**: Tasks (0)–(50) complete; (80) v1 complete. (60)/(70) staged on feat/multi-machine-switcher (PR #2) — verifier will not auto-implement on this branch. (90) v2-deferred. **Awaiting local session to resume task (60)/(70) wiring on feat/multi-machine-switcher.**
+- 2026-06-18 22:09 UTC (cloud verifier): VERIFICATION RUN #15
+  - **cli typecheck**: PASS (0 errors) — clean.
+  - **app typecheck**: FAIL with 55 errors — identical count to all prior runs; all pre-existing on main. Zero new errors from this branch. Branch-touched files: lib/transport/v2.ts:414/475 and app/lunel-connect.tsx:384 — same 3 pre-existing errors, unchanged.
+  - **Security invariant V1**: No regression. No new code on this branch since run #14.
+  - **Draft PR #1**: Open, draft, head SHA = 8e679fb (matches remote). PR body current and accurate.
+  - **⚠️ MAJOR DEVELOPMENT — PR #3 OPENED (not draft)**: Local session opened PR #3 (`chore/expo-56-cng` → `main`) which **supersedes PRs #1 and #2**. PR #3 includes Expo SDK 56 upgrade, full multi-machine direct + warm N-machine switching, and claims tasks 10–70 + 90 **live-verified** on iPad Pro 13" M5 simulator over real Tailscale. The `feat/multi-machine-direct` branch remains clean and is the base for PR #3's work, but the live feature is on `chore/expo-56-cng`.
+  - **Local session**: Active — PR #3 created at 21:08 UTC. This verifier run is for `feat/multi-machine-direct` only; the consolidated branch is not type-checked here.
+  - **No fixes needed on this branch**: Branch is clean, nothing broken, no regressions.
+  - **Checklist status on this branch**: Tasks (0)–(50) complete; (80) v1 complete. (60)/(70)/(90) marked done on PR #3's `chore/expo-56-cng` branch per the live-verification run — not yet reflected in this branch's checklist (intentionally; this branch is the stable base).
+
 - 2026-06-18 21:08 UTC (cloud verifier): VERIFICATION RUN #14
   - **cli typecheck**: PASS (0 errors) — clean.
   - **app typecheck**: FAIL with 55 errors — identical count to all prior runs; all pre-existing on main. Zero new errors from this branch. Branch-touched files: lib/transport/v2.ts:414/475 and app/lunel-connect.tsx:384 — same 3 pre-existing errors, unchanged.
