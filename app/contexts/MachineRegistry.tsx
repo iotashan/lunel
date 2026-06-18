@@ -2,8 +2,9 @@ import React, { createContext, useContext, useState, useCallback, useMemo, useRe
 import type { ConnectTarget } from '@/contexts/ConnectionContext';
 
 // A paired developer machine. The registry holds NO sockets — each machine's
-// own <ConnectionProvider> (inside its <MachineScope>) owns the ws session. The
-// registry only tracks the set of machines, which is active, and how to (re)dial.
+// own <ConnectionProvider> (a per-machine ConnectionHolder in MachineConnections)
+// owns the ws session. The registry only tracks the set of machines, which is
+// active, and how to (re)dial.
 export interface MachineEntry {
   id: string;
   // null for the seeded "primary" machine before the user has paired it — its

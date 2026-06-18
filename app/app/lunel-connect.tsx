@@ -271,8 +271,8 @@ const LunelConnect = () => {
     try {
       if (addMode) {
         // Add-a-machine flow (from the switcher): register a new machine so a
-        // fresh MachineScope mounts + auto-connects, instead of reconnecting the
-        // active scope. The primary/first connection takes the else branch.
+        // fresh ConnectionHolder (in MachineConnections) mounts + auto-connects,
+        // instead of reconnecting the active one. Primary connect takes the else branch.
         const target = parseConnectPayload(trimmedCode);
         if (target.kind === 'relay' && !target.code) {
           throw new Error(t('lunelConnect.errorConnectionFailed'));
