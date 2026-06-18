@@ -191,7 +191,11 @@ export class V2SessionTransport {
       } catch (error) {
         this.options.debugLog?.("[transport:v2] direct message handling failed", error);
         this.failSecure(new Error(error instanceof Error ? error.message : String(error)));
-        this.close();
+        // Close the raw socket (not this.close()) so the "close" handler still
+        // runs onClose — even after the transport is already secure. Calling
+        // this.close() would set closed=true and suppress that cleanup, leaving
+        // the direct listener's connection slot stranded.
+        ws.close();
       }
     });
 

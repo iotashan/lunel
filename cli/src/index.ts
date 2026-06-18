@@ -3602,14 +3602,17 @@ async function startDirectMode(): Promise<void> {
   const ts = await detectTailscale(); // throws TailscaleError with guidance
   const secret = randomBytes(32).toString("base64url");
 
-  const wss = new WebSocketServer({ host: "0.0.0.0", port: DIRECT_PORT });
+  // Bind to the Tailscale interface IP so only tailnet peers can reach the
+  // listener (off-tailnet LAN/localhost peers cannot connect at all).
+  const v4 = ts.ips.find((ip) => ip.includes("."));
+  const bindHost = v4 ?? "0.0.0.0";
+  const wss = new WebSocketServer({ host: bindHost, port: DIRECT_PORT });
   await new Promise<void>((resolve, reject) => {
     wss.once("listening", resolve);
     wss.once("error", reject);
   });
   const address = wss.address();
   const port = typeof address === "object" && address ? address.port : DIRECT_PORT;
-  const v4 = ts.ips.find((ip) => ip.includes("."));
 
   const payload: DirectPairingPayload = {
     v: 1,
@@ -3620,11 +3623,13 @@ async function startDirectMode(): Promise<void> {
     ...(v4 ? { ip: v4 } : {}),
   };
 
-  console.log(`Direct mode (Tailscale): listening on ${ts.fqdn || v4 || "0.0.0.0"}:${port}\n`);
+  console.log(`Direct mode (Tailscale): listening on ${ts.fqdn || v4 || bindHost}:${port}\n`);
   console.log("Scan this QR in the Lunel app to pair directly:\n");
-  displayQR(JSON.stringify(payload));
-  console.log(`\nManual pairing — machine: ${ts.fqdn || v4}   port: ${port}`);
-  console.log(`Code: ${secret}\n`);
+  // Render the QR only — do NOT echo the JSON payload as text (it carries the secret).
+  qrcode.generate(JSON.stringify(payload), { small: true }, (qr) => console.log(qr));
+  console.log(`\n  Machine: ${ts.fqdn || v4}    Port: ${port}`);
+  console.log(`  Pairing code (grants access to this machine — share only with your device):`);
+  console.log(`  ${secret}\n`);
   console.log("Waiting for the app to connect...\n");
 
   let activeConn: WebSocket | null = null;

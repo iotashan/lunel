@@ -93,21 +93,3 @@ export async function detectTailscale(): Promise<TailscaleStatus> {
 
   return { binary: bin, fqdn, ips };
 }
-
-/**
- * Optional peer gating (Workstream A hardening): is the connecting address on
- * this tailnet? `tailscale whois` exits non-zero / errors for off-tailnet peers.
- * Best-effort: returns true if whois resolves a node, false otherwise. Never
- * throws — callers decide whether to enforce.
- */
-export async function isTailnetPeer(bin: string, ipPort: string): Promise<boolean> {
-  try {
-    const { stdout } = await execFileAsync(bin, ["whois", "--json", ipPort], {
-      maxBuffer: 4 * 1024 * 1024,
-    });
-    const parsed = JSON.parse(stdout) as { Node?: unknown };
-    return !!parsed.Node;
-  } catch {
-    return false;
-  }
-}
