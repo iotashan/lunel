@@ -34,12 +34,12 @@ function MachineAutoConnect({ target }: { target: ConnectTarget }) {
  * expo-router Stack is not duplicated per machine.
  */
 export default function MachineScope({
-  target,
+  target = null,
   isActive,
   autoConnect = true,
   children,
 }: {
-  target: ConnectTarget;
+  target?: ConnectTarget | null;
   isActive: boolean;
   autoConnect?: boolean;
   children?: React.ReactNode;
@@ -50,7 +50,7 @@ export default function MachineScope({
         <ReviewPromptProvider>
           <PluginProvider>
             <SessionRegistryProvider>
-              {autoConnect ? <MachineAutoConnect target={target} /> : null}
+              {autoConnect && target ? <MachineAutoConnect target={target} /> : null}
               {children}
             </SessionRegistryProvider>
           </PluginProvider>

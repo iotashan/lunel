@@ -6,10 +6,18 @@ import type { ConnectTarget } from '@/contexts/ConnectionContext';
 // registry only tracks the set of machines, which is active, and how to (re)dial.
 export interface MachineEntry {
   id: string;
-  target: ConnectTarget;
+  // null for the seeded "primary" machine before the user has paired it — its
+  // scope provides a ConnectionProvider for the pre-connect screens (auth/connect)
+  // and does NOT auto-connect; connect()/resume run on it directly like today.
+  target: ConnectTarget | null;
   label: string;
   createdAt: number;
 }
+
+// The always-present first machine. Seeding it keeps machines.length >= 1, so the
+// rendered tree at N=1 is exactly today's (one ConnectionProvider) with no
+// remount when the user pairs (the scope's key never changes).
+export const PRIMARY_MACHINE_ID = 'primary';
 
 interface MachineRegistryContextType {
   machines: MachineEntry[];
@@ -54,8 +62,10 @@ export function serializeTarget(target: ConnectTarget): string {
 const MachineRegistryContext = createContext<MachineRegistryContextType | null>(null);
 
 export function MachineRegistryProvider({ children }: { children: React.ReactNode }) {
-  const [machines, setMachines] = useState<MachineEntry[]>([]);
-  const [activeMachineId, setActiveMachineId] = useState<string | null>(null);
+  const [machines, setMachines] = useState<MachineEntry[]>([
+    { id: PRIMARY_MACHINE_ID, target: null, label: 'This machine', createdAt: Date.now() },
+  ]);
+  const [activeMachineId, setActiveMachineId] = useState<string | null>(PRIMARY_MACHINE_ID);
 
   const addMachine = useCallback(
     (target: ConnectTarget, opts?: { activate?: boolean; label?: string }) => {
@@ -74,6 +84,7 @@ export function MachineRegistryProvider({ children }: { children: React.ReactNod
   );
 
   const removeMachine = useCallback((id: string) => {
+    if (id === PRIMARY_MACHINE_ID) return; // the primary machine is permanent
     setMachines((prev) => prev.filter((m) => m.id !== id));
     // If we removed the active machine, fall back to the most recent remaining
     // one (or null → back to the connect/auth screen). Computed from the current

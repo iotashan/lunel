@@ -1,10 +1,8 @@
 import { AppSettingsProvider, useAppSettings } from "@/contexts/AppSettingsContext";
-import { ConnectionProvider } from "@/contexts/ConnectionContext";
 import { EditorProvider } from "@/contexts/EditorContext";
-import { ReviewPromptProvider } from "@/contexts/ReviewPromptContext";
-import { SessionRegistryProvider } from "@/contexts/SessionRegistry";
 import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
-import { PluginProvider } from "@/plugins";
+import { MachineRegistryProvider, useMachineRegistry } from "@/contexts/MachineRegistry";
+import MachineScope from "@/components/MachineScope";
 import "@/plugins/load"; // Load all plugins
 import i18n, { getStoredLanguage } from "@/lib/i18n";
 // Sans fonts
@@ -109,7 +107,7 @@ import * as NavigationBar from "expo-navigation-bar";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
-import { Platform } from "react-native";
+import { Platform, View } from "react-native";
 import PolyfillCrypto from "react-native-webview-crypto";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -319,25 +317,32 @@ function RootLayoutContent() {
   );
 }
 
+function MachineHost() {
+  const { machines, activeMachineId } = useMachineRegistry();
+  return (
+    <View style={{ flex: 1 }}>
+      {machines.map((m) => (
+        <MachineScope key={m.id} target={m.target} isActive={m.id === activeMachineId}>
+          {m.id === activeMachineId ? <RootLayoutContent /> : null}
+        </MachineScope>
+      ))}
+    </View>
+  );
+}
+
 function RootLayout() {
   return (
     <>
       <PolyfillCrypto />
-      <ConnectionProvider>
+      <MachineRegistryProvider>
         <ThemeProvider>
           <AppSettingsProvider>
-            <ReviewPromptProvider>
-              <EditorProvider>
-                <PluginProvider>
-                  <SessionRegistryProvider>
-                    <RootLayoutContent />
-                  </SessionRegistryProvider>
-                </PluginProvider>
-              </EditorProvider>
-            </ReviewPromptProvider>
+            <EditorProvider>
+              <MachineHost />
+            </EditorProvider>
           </AppSettingsProvider>
         </ThemeProvider>
-      </ConnectionProvider>
+      </MachineRegistryProvider>
     </>
   );
 }
