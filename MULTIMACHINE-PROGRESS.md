@@ -172,6 +172,15 @@ App: (a) global `MachineRegistryProvider` (machine list + activeMachineId) + one
   - **Local session**: Last local commit 16:12 UTC (2c7efa4, ~6h 56m ago). **3-hour idle condition MET.** Task (60) is explicitly blocked from auto-implementation per local session's standing instruction. No auto-implementation triggered.
   - **No fixes needed**: Branch is clean, nothing broken, no regressions.
   - **Checklist status**: Tasks (0)–(50) complete; (80) v1 complete. (60)/(70) staged, explicitly blocked from auto-implementation on this branch. (90) v2-deferred on this branch. All tasks live-verified on PR #3 (`chore/expo-56-cng`).
+- 2026-06-19 00:08 UTC (cloud verifier): VERIFICATION RUN #17
+  - **cli typecheck**: PASS (0 errors) — clean.
+  - **app typecheck**: FAIL with 55 errors — identical count to all prior runs; all pre-existing on main. Zero new errors from this branch. Branch-touched files: lib/transport/v2.ts:414/475 and app/lunel-connect.tsx:384 — same 3 pre-existing errors, unchanged.
+  - **Security invariant V1**: No regression. No new code on this branch since run #16.
+  - **Draft PR #1**: Open, draft, head SHA = 3ecf357 (matches branch HEAD). PR body current and accurate.
+  - **PR #3** (`chore/expo-56-cng` → `main`): Open, NOT draft. Supersedes #1/#2; tasks 10–70 + 90 live-verified on iPad Pro M5. This branch remains the clean foundation.
+  - **Local session**: Last local feature commit 16:12 UTC Jun 18 (2c7efa4, ~8h ago). **3-hour idle condition MET.** Task (60) is explicitly blocked from auto-implementation per local session's standing instruction. No auto-implementation triggered.
+  - **No fixes needed**: Branch is clean, nothing broken, no regressions.
+  - **Checklist status**: Tasks (0)–(50) complete; (80) v1 complete. (60)/(70) staged, explicitly blocked from auto-implementation on this branch. (90) v2-deferred on this branch. All tasks live-verified on PR #3 (`chore/expo-56-cng`).
 - 2026-06-18 21:08 UTC (cloud verifier): VERIFICATION RUN #14
   - **cli typecheck**: PASS (0 errors) — clean.
   - **app typecheck**: FAIL with 55 errors — identical count to all prior runs; all pre-existing on main. Zero new errors from this branch. Branch-touched files: lib/transport/v2.ts:414/475 and app/lunel-connect.tsx:384 — same 3 pre-existing errors, unchanged.
