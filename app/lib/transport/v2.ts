@@ -39,6 +39,11 @@ export interface V2TransportOptions {
   role: 'cli' | 'app';
   handlers: V2TransportHandlers;
   debugLog?: (message: string, ...args: unknown[]) => void;
+  // Direct (Tailscale) mode: dial this raw ws:// URL instead of building a
+  // relay wss:// URL with a ?password= query. The secret is never put in the
+  // URL — it authenticates inside the handshake (sessionSecret). When set, the
+  // CLI listener emits peer_connected to start the handshake.
+  directUrl?: string;
 }
 
 interface KeyPair {
@@ -104,12 +109,14 @@ export class V2SessionTransport {
       this.secureReadyReject = reject;
     });
 
-    const wsUrl = buildSessionV2WsUrl(
-      this.options.gatewayUrl,
-      this.options.role,
-      this.options.password,
-      this.options.generation,
-    );
+    const wsUrl = this.options.directUrl
+      ? this.options.directUrl
+      : buildSessionV2WsUrl(
+          this.options.gatewayUrl,
+          this.options.role,
+          this.options.password,
+          this.options.generation,
+        );
 
     await new Promise<void>((resolve, reject) => {
       const ws = new WebSocket(wsUrl);
