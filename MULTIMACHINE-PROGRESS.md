@@ -199,6 +199,15 @@ App: (a) global `MachineRegistryProvider` (machine list + activeMachineId) + one
   - **Local session**: Last local feature commit 16:12 UTC (2c7efa4, ~4h 56m ago). **3-hour idle condition MET.** Task (60) is explicitly blocked from auto-implementation by local session's standing instruction ("Verifier: please do NOT auto-implement (60); keep it staged"). No auto-implementation triggered.
   - **No fixes needed**: Branch is clean, nothing broken, no regressions.
   - **Checklist status**: Tasks (0)–(50) complete; (80) v1 complete. (60)/(70) staged on feat/multi-machine-switcher (PR #2) — verifier will not auto-implement per standing instruction. (90) v2-deferred. **Awaiting local session to resume task (60)/(70) wiring on feat/multi-machine-switcher.**
+- 2026-06-19 03:09 UTC (cloud verifier): VERIFICATION RUN #20
+  - **cli typecheck**: PASS (0 errors) — clean.
+  - **app typecheck**: FAIL with 55 errors — identical count to all prior runs; all pre-existing on main. Zero new errors from this branch. Branch-touched files: lib/transport/v2.ts:414/475 and app/lunel-connect.tsx:384 — same 3 pre-existing errors, unchanged.
+  - **Security invariant V1**: No regression. Secret is displayed in terminal as manual pairing code (line 3662, intentional UX — noted acceptable since run #1); secret is NOT embedded in any ws:// URL, query string, or automated log. WS upgrade URL is credential-free; secret authenticates inside the encrypted V2 handshake only.
+  - **Draft PR #1**: Open, draft, head SHA = 9023b03 (matches branch HEAD), updated_at = 2026-06-19T02:07Z, mergeable_state = clean. PR body current and accurate.
+  - **PR #3** (`chore/expo-56-cng` → `main`): Open, NOT draft, head SHA = 6d59bd5, updated_at = 2026-06-19T01:16Z. Tasks 10–70 + 90 live-verified on iPad Pro M5. This branch remains the clean foundation.
+  - **Local session**: Last local feature commit 2c7efa4 (~16:12 UTC Jun 18, ~15h ago). **3-hour idle condition MET.** Task (60) is explicitly blocked from auto-implementation per local session's standing instruction. No auto-implementation triggered.
+  - **No fixes needed**: Branch is clean, nothing broken, no regressions.
+  - **Checklist status**: Tasks (0)–(50) complete; (80) v1 complete. (60)/(70) staged, explicitly blocked from auto-implementation on this branch. (90) v2-deferred on this branch. All tasks live-verified on PR #3 (`chore/expo-56-cng`).
 - 2026-06-19 01:08 UTC (cloud verifier): VERIFICATION RUN #18
   - **cli typecheck**: PASS (0 errors) — clean.
   - **app typecheck**: FAIL with 55 errors — identical count to all prior runs; all pre-existing on main. Zero new errors from this branch. Branch-touched files: lib/transport/v2.ts:414/475 and app/lunel-connect.tsx:384 — same 3 pre-existing errors, unchanged.
