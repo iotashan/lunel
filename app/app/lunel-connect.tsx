@@ -77,7 +77,7 @@ function CopyableCommand({ command, fonts, colors }: { command: string; fonts: R
 
 const LunelConnect = () => {
   const router = useRouter();
-  const { addMachine, setActive, addMode, endAdd } = useMachineRegistry();
+  const { addMachine, setActive, addMode, endAdd, activeMachineId, setMachineTarget } = useMachineRegistry();
   const { colors, fonts, typography } = useTheme();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -278,6 +278,14 @@ const LunelConnect = () => {
           throw new Error(t('lunelConnect.errorConnectionFailed'));
         }
         const id = addMachine(target);
+        if (!id) {
+          // Rejected: only one relay machine is supported (shared proxy singleton).
+          endAdd();
+          hasActiveConnectAttemptRef.current = false;
+          setToastMessage('Only one relay machine is supported. Add more machines in direct (Tailscale) mode.');
+          setToastVisible(true);
+          return;
+        }
         setActive(id);
         endAdd();
         hasActiveConnectAttemptRef.current = false;
@@ -285,6 +293,9 @@ const LunelConnect = () => {
         return;
       }
       await connect(trimmedCode);
+      // Record the primary machine's mode so the max-one-relay guard accounts for
+      // it when the user later adds machines from the switcher.
+      try { setMachineTarget(activeMachineId ?? '', parseConnectPayload(trimmedCode)); } catch { /* ignore */ }
       hasActiveConnectAttemptRef.current = false;
     } catch (err) {
       hasActiveConnectAttemptRef.current = false;

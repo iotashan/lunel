@@ -24,7 +24,10 @@ interface MachineRegistryContextType {
   machines: MachineEntry[];
   activeMachineId: string | null;
   /** Register a machine from a parsed connect payload. Returns its id. */
-  addMachine: (target: ConnectTarget, opts?: { activate?: boolean; label?: string }) => string;
+  /** Returns the new machine id, or null if rejected (e.g. a 2nd relay machine). */
+  addMachine: (target: ConnectTarget, opts?: { activate?: boolean; label?: string }) => string | null;
+  /** Record a machine's target/mode (e.g. the seeded primary once it connects). */
+  setMachineTarget: (id: string, target: ConnectTarget) => void;
   removeMachine: (id: string) => void;
   setActive: (id: string) => void;
   /** Update a machine's display label (e.g. once capabilities.hostname is known). */
@@ -79,7 +82,14 @@ export function MachineRegistryProvider({ children }: { children: React.ReactNod
   machinesRef.current = machines;
 
   const addMachine = useCallback(
-    (target: ConnectTarget, opts?: { activate?: boolean; label?: string }) => {
+    (target: ConnectTarget, opts?: { activate?: boolean; label?: string }): string | null => {
+      // Only ONE relay machine is allowed: the port-forwarding proxy is a single
+      // process-global, so a 2nd relay would clobber/misroute the first's tunnels
+      // (and teardown is global). Direct (Tailscale) machines bypass the proxy
+      // entirely (directModeRef-gated) and are unlimited.
+      if (target.kind === 'relay' && machinesRef.current.some((m) => m.target?.kind === 'relay')) {
+        return null;
+      }
       const id = genMachineId();
       const entry: MachineEntry = {
         id,
@@ -115,9 +125,13 @@ export function MachineRegistryProvider({ children }: { children: React.ReactNod
     setMachines((prev) => prev.map((m) => (m.id === id ? { ...m, label } : m)));
   }, []);
 
+  const setMachineTarget = useCallback((id: string, target: ConnectTarget) => {
+    setMachines((prev) => prev.map((m) => (m.id === id ? { ...m, target } : m)));
+  }, []);
+
   const value = useMemo<MachineRegistryContextType>(
-    () => ({ machines, activeMachineId, addMachine, removeMachine, setActive, setLabel, addMode, beginAdd, endAdd }),
-    [machines, activeMachineId, addMachine, removeMachine, setActive, setLabel, addMode, beginAdd, endAdd],
+    () => ({ machines, activeMachineId, addMachine, removeMachine, setActive, setLabel, setMachineTarget, addMode, beginAdd, endAdd }),
+    [machines, activeMachineId, addMachine, removeMachine, setActive, setLabel, setMachineTarget, addMode, beginAdd, endAdd],
   );
 
   return <MachineRegistryContext.Provider value={value}>{children}</MachineRegistryContext.Provider>;

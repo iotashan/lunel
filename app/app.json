@@ -82,6 +82,7 @@
         }
       ],
       "./config-plugins/withMinIosDeploymentTarget",
+      "./config-plugins/withAndroidBrotliDedupe",
       "expo-audio"
     ],
     "experiments": {
