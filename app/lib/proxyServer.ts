@@ -442,7 +442,7 @@ async function sniffInitialClientProtocol(
 
 function sendBufferedClientChunks(proxyWs: WebSocket, chunks: Uint8Array[]): void {
   for (const chunk of chunks) {
-    proxyWs.send(chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength));
+    proxyWs.send(chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength) as ArrayBuffer);
   }
 }
 

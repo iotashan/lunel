@@ -500,7 +500,7 @@ export class V2SessionTransport {
       throw new Error('v2 transport is not connected');
     }
     const framed = encodeV2EncryptedFrame(ciphertext);
-    this.ws.send(framed.buffer.slice(framed.byteOffset, framed.byteOffset + framed.byteLength));
+    this.ws.send(framed.buffer.slice(framed.byteOffset, framed.byteOffset + framed.byteLength) as ArrayBuffer);
   }
 
   private markSecure(): void {

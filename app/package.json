@@ -116,13 +116,24 @@
     "@hot-updater/aws": "latest",
     "@hot-updater/expo": "latest",
     "@hot-updater/standalone": "latest",
-    "@types/react": "~19.1.0",
+    "@types/react": "~19.2.14",
     "dotenv": "^16.4.7",
     "esbuild": "^0.27.4",
     "eslint": "^9.25.0",
-    "eslint-config-expo": "~10.0.0",
+    "eslint-config-expo": "~56.0.4",
     "hot-updater": "latest",
-    "typescript": "~5.9.2"
+    "typescript": "~6.0.3"
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "@expo/fingerprint": "0.19.4"
+  },
+  "expo": {
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "exclude": ["react-native-libsodium"],
+        "listUnknownPackages": false
+      }
+    }
+  }
 }
