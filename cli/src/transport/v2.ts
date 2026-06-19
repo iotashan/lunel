@@ -163,6 +163,72 @@ export class V2SessionTransport {
     await this.secureReadyPromise;
   }
 
+  /**
+   * Direct mode: instead of dialing the relay, the CLI binds a ws server and
+   * accepts the phone. The handshake logic is identical — the app stays the
+   * initiator (client_hello) and the CLI the responder (server_hello) — so we
+   * just wire the same message handlers onto the already-open inbound socket
+   * and emit a synthetic `peer_connected` so the app starts its handshake (the
+   * relay normally emits that frame). The secret is proven inside the handshake
+   * auth tag; it is NEVER carried in the URL on a direct ws:// link.
+   */
+  async attachServerSocket(ws: WebSocket, handshakeTimeoutMs = 20_000): Promise<void> {
+    if (this.options.role !== "cli") {
+      throw new Error("attachServerSocket is only valid for the cli role");
+    }
+    await sodium.ready;
+    this.ws = ws;
+    this.closed = false;
+    this.state = "open";
+    this.secureReadyPromise = new Promise<void>((resolve, reject) => {
+      this.secureReadyResolve = resolve;
+      this.secureReadyReject = reject;
+    });
+
+    ws.on("message", async (data, isBinary) => {
+      try {
+        await this.handleMessage(data, isBinary);
+      } catch (error) {
+        this.options.debugLog?.("[transport:v2] direct message handling failed", error);
+        this.failSecure(new Error(error instanceof Error ? error.message : String(error)));
+        // Close the raw socket (not this.close()) so the "close" handler still
+        // runs onClose — even after the transport is already secure. Calling
+        // this.close() would set closed=true and suppress that cleanup, leaving
+        // the direct listener's connection slot stranded.
+        ws.close();
+      }
+    });
+
+    ws.on("close", (code, reason) => {
+      this.ws = null;
+      this.state = "closed";
+      if (!this.closed) {
+        this.closed = true;
+        this.failSecure(new Error(`v2 direct socket closed (${code}: ${reason.toString()})`));
+        this.options.handlers.onClose(`v2 direct socket closed (${code}: ${reason.toString()})`);
+      }
+    });
+
+    ws.on("error", (error) => {
+      this.options.debugLog?.("[transport:v2] direct websocket error", error.message);
+    });
+
+    // Kick the app's handshake (it sends client_hello on peer_connected).
+    this.ws.send(JSON.stringify({ type: "peer_connected" }));
+
+    const timeout = setTimeout(() => {
+      if (this.state !== "secure") {
+        this.failSecure(new Error("direct handshake timed out"));
+        this.close();
+      }
+    }, handshakeTimeoutMs);
+    try {
+      await this.secureReadyPromise;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   async sendMessage(message: Message): Promise<void> {
     const ciphertext = this.encryptEnvelope({ kind: "request", message });
     this.sendBinaryFrame(ciphertext);

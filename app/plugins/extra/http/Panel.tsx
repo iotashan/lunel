@@ -476,7 +476,7 @@ function HttpPanel({ instanceId, isActive, bottomBarHeight }: PluginPanelProps) 
         </View>
       ) : activeTab === 'history' ? (
         history.length === 0 ? (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: spacing[10] }}>
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: (spacing as unknown as Record<number, number>)[10] }}>
             <Clock size={48} color={colors.fg.subtle} strokeWidth={1.5} />
             <Text style={{ fontSize: baseTextSize, fontFamily: fonts.sans.medium, color: colors.fg.muted, marginTop: spacing[4] }}>
               {t('http.noHistory')}

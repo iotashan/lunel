@@ -5,9 +5,10 @@ import { AppState } from 'react-native';
 import { configureProxy, startPortServers, stopAllServers } from '@/lib/proxyServer';
 import { logger } from '@/lib/logger';
 import { V2SessionTransport } from '@/lib/transport/v2';
+import { isLocalHostname, normalizeGateway as normalizeGatewayBase, parseConnectPayload, type ConnectTarget } from '@/lib/connectTarget';
 
-const DEFAULT_GATEWAY = 'wss://gateway.lunel.dev';
-const MANAGER_URL = 'https://manager.lunel.dev';
+const DEFAULT_GATEWAY = process.env.EXPO_PUBLIC_LUNEL_GATEWAY || 'wss://gateway.lunel.dev';
+const MANAGER_URL = process.env.EXPO_PUBLIC_LUNEL_MANAGER || 'https://manager.lunel.dev';
 const LAST_SESSION_STORAGE_KEY = 'lunel_last_session';
 const LAST_SESSION_FALLBACK_STORAGE_KEY = '@lunel_last_session_fallback';
 const PAIRED_SESSIONS_STORAGE_KEY = 'lunel_paired_sessions';
@@ -100,7 +101,7 @@ export interface PairedSession extends StoredSession {
   lastUsedAt: number;
 }
 
-interface ConnectionContextType {
+export interface ConnectionContextType {
   status: ConnectionStatus;
   sessionState: SessionState;
   sessionCode: string | null;
@@ -126,14 +127,16 @@ interface ConnectionContextType {
   sendData: (ns: string, action: string, payload?: Record<string, unknown>, timeoutMs?: number) => Promise<Response>;
   fireData: (ns: string, action: string, payload?: Record<string, unknown>) => void;
   onDataEvent: (handler: (message: Message) => void) => () => void;
+  // Pause/resume the CLI's high-frequency terminal render stream (battery).
+  setStreaming: (enabled: boolean) => void;
 }
 
-const ConnectionContext = createContext<ConnectionContextType | null>(null);
+export const ConnectionContext = createContext<ConnectionContextType | null>(null);
 let hasLoggedMissingConnectionProvider = false;
 
 const unavailableConnectionError = () => new Error('Connection context unavailable during app bootstrap');
 
-const fallbackConnectionContext: ConnectionContextType = {
+export const fallbackConnectionContext: ConnectionContextType = {
   status: 'disconnected',
   sessionState: 'idle',
   sessionCode: null,
@@ -177,6 +180,7 @@ const fallbackConnectionContext: ConnectionContextType = {
   },
   fireData: () => {},
   onDataEvent: () => () => {},
+  setStreaming: () => {},
 };
 
 function describeWebSocketErrorEvent(event: unknown): Record<string, unknown> {
@@ -212,63 +216,13 @@ function shouldLogRequest(ns: string, action: string): boolean {
   return true;
 }
 
-function normalizeGateway(input: string): string {
-  const raw = input.trim();
-  if (!raw) return DEFAULT_GATEWAY;
+// isLocalHostname / normalizeGateway / parseConnectPayload / ConnectTarget live in
+// lib/connectTarget.ts (pure + unit-tested in connectTarget.test.ts). Re-exported
+// here so existing importers (lunel-connect, MachineRegistry) keep working.
+export { parseConnectPayload };
+export type { ConnectTarget };
 
-  const lower = raw.toLowerCase();
-  if (lower.startsWith('ws://') || lower.startsWith('http://')) {
-    throw new Error('Insecure gateway protocol is not allowed; use wss:// or https://');
-  }
-
-  const asWss = lower.startsWith('https://')
-    ? `wss://${raw.slice(8)}`
-    : lower.startsWith('wss://')
-      ? raw
-      : `wss://${raw}`;
-
-  try {
-    const url = new URL(asWss);
-    if (url.protocol !== 'wss:') {
-      throw new Error('invalid protocol');
-    }
-    const path = url.pathname === '/' ? '' : url.pathname.replace(/\/+$/, '');
-    return `${url.protocol}//${url.host}${path}`;
-  } catch {
-    throw new Error('Invalid gateway URL');
-  }
-}
-
-function parseConnectPayload(value: string): { code: string } {
-  const raw = value.trim();
-  if (!raw) return { code: '' };
-
-  const parts = raw.split(',').map((x) => x.trim()).filter(Boolean);
-  if (parts.length >= 2) {
-    const code = parts[parts.length - 1];
-    return { code };
-  }
-
-  // Support URL payloads, e.g. lunel://connect?code=ABC or https://.../ABC
-  try {
-    const url = new URL(raw);
-    const queryCode = url.searchParams.get('code')?.trim();
-    if (queryCode) return { code: queryCode };
-
-    const pathCode = url.pathname.split('/').filter(Boolean).pop()?.trim();
-    if (pathCode) return { code: pathCode };
-  } catch {
-    // ignore URL parsing failures and continue with fallback parsing
-  }
-
-  // Support plain text containing "...code=ABC..."
-  const queryMatch = raw.match(/(?:^|[?&#,\s])code=([^&#,\s]+)/i);
-  if (queryMatch?.[1]) {
-    return { code: decodeURIComponent(queryMatch[1]).trim() };
-  }
-
-  return { code: raw };
-}
+const normalizeGateway = (input: string): string => normalizeGatewayBase(input, DEFAULT_GATEWAY);
 
 function toTerminalSessionState(state?: string, reason?: string): SessionState {
   if (state === 'expired') return 'expired';
@@ -323,6 +277,10 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
   const reconnectWithPasswordRef = useRef<(() => Promise<{ ok: boolean; terminal: boolean; message?: string }>) | null>(null);
   const runReconnectLoopRef = useRef<((source: 'app_active' | 'network_restored' | 'transport_closed') => Promise<void>) | null>(null);
   const manualDisconnectRef = useRef(false);
+  // Direct (Tailscale) mode: the secret must never reach the relay manager, so
+  // all manager-contacting lifecycle paths (reattach, health probe, paired-session
+  // persistence) are gated off when this is set.
+  const directModeRef = useRef(false);
   const reconnectingRef = useRef(false);
   const reconnectLoopActiveRef = useRef(false);
   const networkReachableRef = useRef(true);
@@ -598,6 +556,13 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
     return sendMessageV2(ns, action, payload, timeoutMs);
   }, [sendMessageV2]);
 
+  const setStreaming = useCallback((enabled: boolean) => {
+    // Best-effort battery control: tell the CLI to stop/resume the ~24fps
+    // terminal render frames. Uses the ref so it stays stable; no-ops/ignored
+    // when not connected or when the CLI predates terminal.setStreaming.
+    void sendControlRef.current?.('terminal', 'setStreaming', { enabled }).catch(() => {});
+  }, []);
+
   const fireData = useCallback((ns: string, action: string, payload: Record<string, unknown> = {}) => {
     const transport = v2TransportRef.current;
     if (!transport) return;
@@ -642,7 +607,7 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
       status,
     });
 
-    if (AppState.currentState === 'active' && status === 'connected') {
+    if (AppState.currentState === 'active' && status === 'connected' && !directModeRef.current) {
       startPortServers(nextOpenPorts);
     }
   }, [status]);
@@ -682,7 +647,7 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
 
   const connectToGatewayV2 = useCallback(async (
     gateway: string,
-    options?: { sessionPassword?: string | null; sessionCode?: string | null; generation?: number | null }
+    options?: { sessionPassword?: string | null; sessionCode?: string | null; generation?: number | null; directUrl?: string }
   ): Promise<void> => {
     const generation = ++connectionGenerationRef.current;
     const wsPassword = options?.sessionPassword ?? sessionPasswordRef.current;
@@ -703,6 +668,7 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
       sessionSecret: wsPassword,
       generation: options?.generation ?? reattachGenerationRef.current,
       role: 'app',
+      directUrl: options?.directUrl,
       debugLog: (message, ...args) => logger.info('connection', message, {
         args: args.map((value) => {
           if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || value == null) {
@@ -829,7 +795,7 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
               discoveredPortsRef.current = ports;
               setDiscoveredProxyPorts(ports);
               logger.info('connection', 'received proxy ports', { ports });
-              if (AppState.currentState === 'active') {
+              if (AppState.currentState === 'active' && !directModeRef.current) {
                 logger.info('connection', 'starting localhost proxy servers from discovered ports', {
                   ports,
                   appState: AppState.currentState,
@@ -888,7 +854,7 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
     setIsReconnecting(false);
     networkReachableRef.current = true;
 
-    if (sessionPasswordRef.current) {
+    if (sessionPasswordRef.current && !directModeRef.current) {
       try {
         await savePairedSession({
           sessionCode: sessionCodeRef.current,
@@ -908,7 +874,7 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
   }, [clearPendingRequests, clearStoredSession, generateId, savePairedSession, sendMessageV2]);
 
   const assembleWithCode = useCallback(async (code: string): Promise<AssembleResult> => {
-    const wsUrl = `${MANAGER_URL.replace(/^https:/, 'wss:')}/v2/assemble?code=${encodeURIComponent(code)}&role=app`;
+    const wsUrl = `${MANAGER_URL.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:')}/v2/assemble?code=${encodeURIComponent(code)}&role=app`;
     const healthUrl = new URL('/health', MANAGER_URL).toString();
 
     try {
@@ -1096,6 +1062,13 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
   }, []);
 
   const reconnectWithPassword = useCallback(async (): Promise<{ ok: boolean; terminal: boolean; message?: string }> => {
+    if (directModeRef.current) {
+      // Direct (Tailscale) sessions must never reattach via the relay manager
+      // (it would send the pairing secret to the relay). v1: fail locally; the
+      // user re-scans the QR. Direct reconnect is a follow-up (task 60+).
+      logger.info('connection', 'reconnect skipped for direct session');
+      return { ok: false, terminal: true, message: 'Direct session ended — re-pair to reconnect' };
+    }
     if (manualDisconnectRef.current) {
       logger.info('connection', 'reconnect skipped after manual disconnect');
       return { ok: false, terminal: true, message: 'Disconnected' };
@@ -1300,7 +1273,8 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
   }, [clearStoredSession, sendPlaintextSystemRequestV2]);
 
   const connect = useCallback(async (payload: string) => {
-    logger.info('connection', 'connect requested', { payloadPreview: payload.trim().slice(0, 32) });
+    // Do not log the raw payload — a direct QR contains the pairing secret.
+    logger.info('connection', 'connect requested');
     manualDisconnectRef.current = false;
     reconnectingRef.current = false;
     reconnectLoopActiveRef.current = false;
@@ -1310,6 +1284,53 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
     cleanupSockets(false);
 
     const parsed = parseConnectPayload(payload);
+
+    if (parsed.kind === 'direct') {
+      directModeRef.current = true;
+      // Prefer the MagicDNS name; fall back to the 100.x IP if it's present and
+      // the FQDN dial fails (MagicDNS not resolving on the phone).
+      const hosts = [parsed.fqdn, parsed.ip].filter((h): h is string => !!h);
+      if (hosts.length === 0) {
+        logger.warn('connection', 'direct connect rejected: no fqdn/ip');
+        setSessionState('ended');
+        setStatus('error');
+        setError('Invalid direct pairing payload');
+        throw new Error('Invalid direct pairing payload');
+      }
+      setSessionState('pending');
+      setStatus('connecting');
+      setError(null);
+      setSessionCode(null);
+      // No relay session code in direct mode — keeps the relay-only proxy config
+      // (guarded by sessionCodeRef) from running. The secret authenticates inside
+      // the handshake; it is never placed in the ws:// URL.
+      sessionCodeRef.current = null;
+      sessionPasswordRef.current = parsed.secret;
+      reattachGenerationRef.current = null;
+      let lastError: Error | null = null;
+      for (const host of hosts) {
+        const directUrl = `ws://${host}:${parsed.port}`;
+        gatewaysRef.current = [directUrl];
+        activeGatewayRef.current = directUrl;
+        logger.info('connection', 'connecting directly (Tailscale)', { host, port: parsed.port });
+        try {
+          await connectToGatewayV2(directUrl, { sessionPassword: parsed.secret, directUrl });
+          return;
+        } catch (err) {
+          lastError = err instanceof Error ? err : new Error('Direct connection failed');
+          logger.warn('connection', 'direct connect attempt failed', { host, error: lastError.message });
+        }
+      }
+      const finalError = lastError ?? new Error('Direct connection failed');
+      logger.error('connection', 'direct connect failed', { error: finalError.message });
+      setSessionState('ended');
+      setStatus('error');
+      setError(finalError.message);
+      throw finalError;
+    }
+
+    directModeRef.current = false;
+
     if (!parsed.code) {
       logger.warn('connection', 'connect rejected due to invalid code');
       setSessionState('ended');
@@ -1379,6 +1400,8 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
       hasSessionCode: Boolean(stored?.sessionCode),
       gatewayCount: stored?.gateways?.length ?? 0,
     });
+    // Resume is relay-only (direct sessions are not persisted).
+    directModeRef.current = false;
     manualDisconnectRef.current = false;
     reconnectingRef.current = false;
     reconnectLoopActiveRef.current = false;
@@ -1447,7 +1470,7 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
         discoveredPorts: discoveredPortsRef.current,
       });
       if (nextState === 'active') {
-        if (status === 'connected' && discoveredPortsRef.current.length > 0) {
+        if (status === 'connected' && discoveredPortsRef.current.length > 0 && !directModeRef.current) {
           startPortServers(discoveredPortsRef.current);
         }
         if (status !== 'connected' && !manualDisconnectRef.current && !reconnectingRef.current) {
@@ -1458,8 +1481,13 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
             logger.info('connection', 'app returned active without in-memory session; skipping automatic reconnect');
           }
         }
+        // Resume the terminal render stream paused on background (CLI repaints
+        // from cached state). Best-effort; ignored when not connected.
+        void sendControlRef.current?.('terminal', 'setStreaming', { enabled: true }).catch(() => {});
         return;
       }
+      // Backgrounded/inactive: stop the ~24fps terminal stream to save battery.
+      void sendControlRef.current?.('terminal', 'setStreaming', { enabled: false }).catch(() => {});
       stopAllServers();
     });
 
@@ -1478,6 +1506,14 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
       if (appStateRef.current !== 'active') {
         return;
       }
+      // Direct mode has no relay; probing manager.lunel.dev would both leak intent
+      // and wrongly tear down a healthy Tailscale session when the relay is down.
+      if (directModeRef.current) {
+        return;
+      }
+      // A localhost manager (local relay testing) is always reachable; skip the
+      // recurring cleartext-http probe so it never falsely flips us offline.
+      try { if (isLocalHostname(new URL(MANAGER_URL).hostname)) return; } catch { /* ignore */ }
       if (manualDisconnectRef.current || !sessionPasswordRef.current) {
         return;
       }
@@ -1575,7 +1611,8 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
     sendData,
     fireData,
     onDataEvent,
-  }), [status, sessionState, sessionCode, capabilities, error, isReconnecting, interactionBlockReason, trackedProxyPorts, discoveredProxyPorts, connect, resumeSession, getStoredSession, getPairedSessions, revokePairedSession, removePairedSession, clearStoredSession, endSession, disconnect, refreshProxyState, trackProxyPort, untrackProxyPort, sendControl, sendData, fireData, onDataEvent]);
+    setStreaming,
+  }), [status, sessionState, sessionCode, capabilities, error, isReconnecting, interactionBlockReason, trackedProxyPorts, discoveredProxyPorts, connect, resumeSession, getStoredSession, getPairedSessions, revokePairedSession, removePairedSession, clearStoredSession, endSession, disconnect, refreshProxyState, trackProxyPort, untrackProxyPort, sendControl, sendData, fireData, onDataEvent, setStreaming]);
 
   return (
     <ConnectionContext.Provider value={value}>

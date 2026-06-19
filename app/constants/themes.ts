@@ -591,7 +591,10 @@ export function isValidTheme(theme: string): theme is ThemeOption {
 
 // Get Prism token colors from theme
 export function getPrismTokenColors(colors: ThemeColors): Record<string, string> {
-  const { syntax, editor } = colors;
+  const { syntax, editor } = colors as ThemeColors & {
+    syntax: Record<string, string>;
+    editor: { fg: string };
+  };
   return {
     'keyword': syntax.keyword,
     'string': syntax.string,

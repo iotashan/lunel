@@ -14,7 +14,7 @@ try {
   });
 }
 
-const DEFAULT_GATEWAY_WS_URL = 'wss://gateway.lunel.dev';
+const DEFAULT_GATEWAY_WS_URL = process.env.EXPO_PUBLIC_LUNEL_GATEWAY || 'wss://gateway.lunel.dev';
 
 // ============================================================================
 // Types
@@ -442,7 +442,7 @@ async function sniffInitialClientProtocol(
 
 function sendBufferedClientChunks(proxyWs: WebSocket, chunks: Uint8Array[]): void {
   for (const chunk of chunks) {
-    proxyWs.send(chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength));
+    proxyWs.send(chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength) as ArrayBuffer);
   }
 }
 

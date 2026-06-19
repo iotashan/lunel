@@ -39,6 +39,11 @@ export interface V2TransportOptions {
   role: 'cli' | 'app';
   handlers: V2TransportHandlers;
   debugLog?: (message: string, ...args: unknown[]) => void;
+  // Direct (Tailscale) mode: dial this raw ws:// URL instead of building a
+  // relay wss:// URL with a ?password= query. The secret is never put in the
+  // URL — it authenticates inside the handshake (sessionSecret). When set, the
+  // CLI listener emits peer_connected to start the handshake.
+  directUrl?: string;
 }
 
 interface KeyPair {
@@ -104,12 +109,14 @@ export class V2SessionTransport {
       this.secureReadyReject = reject;
     });
 
-    const wsUrl = buildSessionV2WsUrl(
-      this.options.gatewayUrl,
-      this.options.role,
-      this.options.password,
-      this.options.generation,
-    );
+    const wsUrl = this.options.directUrl
+      ? this.options.directUrl
+      : buildSessionV2WsUrl(
+          this.options.gatewayUrl,
+          this.options.role,
+          this.options.password,
+          this.options.generation,
+        );
 
     await new Promise<void>((resolve, reject) => {
       const ws = new WebSocket(wsUrl);
@@ -401,6 +408,9 @@ export class V2SessionTransport {
       if (!this.sessionKeys) {
         throw new Error('missing session keys before server_ready');
       }
+      if (!this.remotePublicKey) {
+        throw new Error('missing remote public key before server_ready');
+      }
       const expectedAuth = this.computeHandshakeAuth(
         'server_ready',
         'cli',
@@ -465,7 +475,7 @@ export class V2SessionTransport {
     const authKey = sodium.crypto_generichash(
       sodium.crypto_auth_KEYBYTES,
       encodeUtf8(this.options.sessionSecret),
-      undefined,
+      null,
     ) as Uint8Array;
     const parts = [
       phase,
@@ -490,7 +500,7 @@ export class V2SessionTransport {
       throw new Error('v2 transport is not connected');
     }
     const framed = encodeV2EncryptedFrame(ciphertext);
-    this.ws.send(framed.buffer.slice(framed.byteOffset, framed.byteOffset + framed.byteLength));
+    this.ws.send(framed.buffer.slice(framed.byteOffset, framed.byteOffset + framed.byteLength) as ArrayBuffer);
   }
 
   private markSecure(): void {

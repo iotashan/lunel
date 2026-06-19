@@ -1,4 +1,4 @@
-import { File, Directory, Paths } from 'expo-file-system/next';
+import { File, Directory, Paths } from 'expo-file-system';
 
 // Base storage directory
 const STORAGE_DIR = new Directory(Paths.document, 'lunel-editor');

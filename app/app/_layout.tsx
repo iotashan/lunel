@@ -1,9 +1,10 @@
 import { AppSettingsProvider, useAppSettings } from "@/contexts/AppSettingsContext";
-import { ConnectionProvider } from "@/contexts/ConnectionContext";
 import { EditorProvider } from "@/contexts/EditorContext";
+import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
+import { MachineRegistryProvider, useMachineRegistry } from "@/contexts/MachineRegistry";
+import { ConnectionHolder, ActiveConnectionProvider } from "@/contexts/MachineConnections";
 import { ReviewPromptProvider } from "@/contexts/ReviewPromptContext";
 import { SessionRegistryProvider } from "@/contexts/SessionRegistry";
-import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
 import { PluginProvider } from "@/plugins";
 import "@/plugins/load"; // Load all plugins
 import i18n, { getStoredLanguage } from "@/lib/i18n";
@@ -109,7 +110,7 @@ import * as NavigationBar from "expo-navigation-bar";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
-import { Platform } from "react-native";
+import { Platform, View } from "react-native";
 import PolyfillCrypto from "react-native-webview-crypto";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -233,14 +234,14 @@ function RootLayoutContent() {
   useEffect(() => {
     if (Platform.OS !== "android") return;
 
+    // Edge-to-edge is always on in SDK 56, so the navigation bar background is
+    // transparent automatically; only the button (icon) style is configurable.
     if (isWorkspace) {
-      NavigationBar.setBackgroundColorAsync("transparent");
-      NavigationBar.setButtonStyleAsync("light");
+      NavigationBar.setStyle("light");
       return;
     }
 
-    NavigationBar.setBackgroundColorAsync(statusBarBg);
-    NavigationBar.setButtonStyleAsync(statusBarStyle === "light" ? "light" : "dark");
+    NavigationBar.setStyle(statusBarStyle === "light" ? "light" : "dark");
   }, [isWorkspace, statusBarBg, statusBarStyle]);
 
   useEffect(() => {
@@ -273,11 +274,7 @@ function RootLayoutContent() {
         style={{ flex: 1, backgroundColor: "transparent" }}
         edges={[]}
       >
-        <StatusBar
-          style={statusBarStyle}
-          backgroundColor="transparent"
-          translucent={true}
-        />
+        <StatusBar style={statusBarStyle} />
         <Stack
           screenOptions={{
             animation: "none",
@@ -323,25 +320,42 @@ function RootLayoutContent() {
   );
 }
 
+function MachineHost() {
+  const { machines } = useMachineRegistry();
+  return (
+    <View style={{ flex: 1 }}>
+      {/* One warm <ConnectionProvider> per machine — render null, never wrap the
+          router, so switching the active machine never reparents/remounts it. */}
+      {machines.map((m) => (
+        <ConnectionHolder key={m.id} machineId={m.id} target={m.target} />
+      ))}
+      {/* The single router, fed the ACTIVE machine's connection. */}
+      <ActiveConnectionProvider>
+        <ReviewPromptProvider>
+          <PluginProvider>
+            <SessionRegistryProvider>
+              <RootLayoutContent />
+            </SessionRegistryProvider>
+          </PluginProvider>
+        </ReviewPromptProvider>
+      </ActiveConnectionProvider>
+    </View>
+  );
+}
+
 function RootLayout() {
   return (
     <>
       <PolyfillCrypto />
-      <ConnectionProvider>
+      <MachineRegistryProvider>
         <ThemeProvider>
           <AppSettingsProvider>
-            <ReviewPromptProvider>
-              <EditorProvider>
-                <PluginProvider>
-                  <SessionRegistryProvider>
-                    <RootLayoutContent />
-                  </SessionRegistryProvider>
-                </PluginProvider>
-              </EditorProvider>
-            </ReviewPromptProvider>
+            <EditorProvider>
+              <MachineHost />
+            </EditorProvider>
           </AppSettingsProvider>
         </ThemeProvider>
-      </ConnectionProvider>
+      </MachineRegistryProvider>
     </>
   );
 }

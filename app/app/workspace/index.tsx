@@ -7,7 +7,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { logger } from "@/lib/logger";
 import { usePlugins } from "@/plugins";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useDrawerStatus } from "@react-navigation/drawer";
+import { useDrawerStatus } from "expo-router/drawer";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {

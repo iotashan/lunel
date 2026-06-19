@@ -10,7 +10,7 @@ import { monoFamilies } from "@/constants/themes";
 import { useApi } from "@/hooks/useApi";
 import { logger } from "@/lib/logger";
 import { usePlugins } from "@/plugins/context";
-import { DrawerActions, useNavigation } from "@react-navigation/native";
+import { DrawerActions, useNavigation } from "expo-router/react-navigation";
 import * as Haptics from "expo-haptics";
 import { ChevronDown, ChevronUp, File, Folder, Keyboard as KeyboardIcon, Save, Search, Star, X } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";

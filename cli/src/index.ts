@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
-import { WebSocket } from "ws";
+import { WebSocket, WebSocketServer } from "ws";
 import qrcode from "qrcode-terminal";
+import { detectTailscale, TailscaleError } from "./tailscale.js";
 import shell from "shelljs";
 import { createAiManager } from "./ai/index.js";
 import type { AiManager, AiBackend } from "./ai/index.js";
@@ -82,6 +83,14 @@ const terminals = new Set<string>();
 let ptyProcess: ChildProcess | null = null;
 const ptyPendingSpawns = new Map<string, { resolve: () => void; reject: (err: Error) => void }>();
 
+// Battery optimization: the app sends terminal.setStreaming{enabled:false} when
+// it backgrounds (or, with multi-machine, when this machine is not focused) to
+// stop the ~24fps cell-grid 'state' frames. We cache the latest state per
+// terminal so we can repaint immediately on resume (the PTY only re-emits on
+// change). Per-CLI-connection flag — exactly one CLI process per machine.
+let terminalStreamingEnabled = true;
+const lastTerminalState = new Map<string, Message>();
+
 function getDefaultTerminalShell(): string {
   if (process.platform === "win32") {
     return process.env.COMSPEC || "C:\\Windows\\System32\\cmd.exe";
@@ -148,6 +157,9 @@ Options:
   -n, --new          Create a new session code
   -d, --debug        Show verbose debug logs
       --extra-ports  Extra local ports to expose, comma-separated (e.g. 3000,8080)
+      --direct       Direct mode: pair the phone over Tailscale (no relay).
+                     Requires Tailscale running. Prints a QR to scan in the app.
+      --direct-port  Fixed port for --direct (default: ephemeral)
 `);
 }
 interface ActiveTunnel {
@@ -268,6 +280,18 @@ function parseExtraPortsFromArgs(args: string[]): number[] {
 
 const EXTRA_PORTS = parseExtraPortsFromArgs(CLI_ARGS);
 const FORCE_NEW_CODE = hasAnyFlag(CLI_ARGS, "--new", "-n");
+// Direct mode: bind a local ws server on the Tailscale interface and let the
+// phone connect peer-to-peer (no relay). See startDirectMode().
+const DIRECT_MODE = hasAnyFlag(CLI_ARGS, "--direct");
+function parseDirectPort(args: string[]): number {
+  const idx = args.findIndex((a) => a === "--direct-port");
+  if (idx >= 0 && args[idx + 1]) {
+    const n = Number(args[idx + 1]);
+    if (Number.isInteger(n) && n >= 0 && n <= 65535) return n;
+  }
+  return 0; // 0 = ephemeral port chosen by the OS, advertised in the QR
+}
+const DIRECT_PORT = parseDirectPort(CLI_ARGS);
 const trackedProxyPorts = new Set<number>(EXTRA_PORTS);
 function samePortSet(a: number[], b: number[]): boolean {
   if (a.length !== b.length) return false;
@@ -1101,7 +1125,9 @@ async function handleGitDiff(payload: Record<string, unknown>): Promise<Record<s
 
   const args = ["diff"];
   if (staged) args.push("--staged");
-  if (filepath) args.push(filepath);
+  // ponytail: `--` ends git options so a remote-supplied path (e.g. "--output=/etc/x")
+  // is treated as a pathspec, not a git flag — keeps git inside the same jail fs.* enforces.
+  if (filepath) args.push("--", filepath);
 
   const result = await runGit(args);
 
@@ -1135,6 +1161,9 @@ async function handleGitCheckout(payload: Record<string, unknown>): Promise<Reco
   const branch = payload.branch as string;
   const create = payload.create === true;
   if (!branch) throw Object.assign(new Error("branch is required"), { code: "EINVAL" });
+  // ponytail: reject leading "-" so a branch value can't smuggle a git option.
+  // (Can't use `--` here: `git checkout -- <x>` changes to file-restore semantics.)
+  if (branch.startsWith("-")) throw Object.assign(new Error("invalid branch name"), { code: "EINVAL" });
 
   const args = create ? ["checkout", "-b", branch] : ["checkout", branch];
   const result = await runGit(args);
@@ -1148,8 +1177,10 @@ async function handleGitCheckout(payload: Record<string, unknown>): Promise<Reco
 async function handleGitDeleteBranch(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
   const branch = payload.branch as string;
   if (!branch) throw Object.assign(new Error("branch is required"), { code: "EINVAL" });
+  // ponytail: reject leading "-" so a branch value can't smuggle a git option.
+  if (branch.startsWith("-")) throw Object.assign(new Error("invalid branch name"), { code: "EINVAL" });
 
-  const result = await runGit(["branch", "-d", branch]);
+  const result = await runGit(["branch", "-d", "--", branch]);
   if (result.code !== 0) {
     throw Object.assign(new Error(result.stderr || "git branch delete failed"), { code: "EGIT" });
   }
@@ -1233,6 +1264,21 @@ function emitAppEvent(msg: Message): void {
       if (DEBUG_MODE) console.error("[transport:v2] failed to send event:", error instanceof Error ? error.message : String(error));
     });
   }
+}
+
+function handleTerminalSetStreaming(payload: Record<string, unknown>): { enabled: boolean } {
+  const enabled = payload.enabled !== false; // default to enabled
+  const wasEnabled = terminalStreamingEnabled;
+  terminalStreamingEnabled = enabled;
+  // On resume, repaint immediately from the cached screen state for each live
+  // terminal — the PTY only re-emits 'state' on change, so without this the
+  // screen would stay stale until the next keystroke/output.
+  if (enabled && !wasEnabled) {
+    for (const msg of lastTerminalState.values()) {
+      emitAppEvent(msg);
+    }
+  }
+  return { enabled: terminalStreamingEnabled };
 }
 
 function emitEditorFileChanged(requestPath: string, mtimeMs: number, size: number): void {
@@ -1671,9 +1717,13 @@ async function ensurePtyProcess(): Promise<void> {
           scrollbackLength: event.scrollbackLength,
         },
       };
-      emitAppEvent(msg);
+      lastTerminalState.set(event.id, msg);
+      if (terminalStreamingEnabled) {
+        emitAppEvent(msg);
+      }
     } else if (event.event === "exit") {
       terminals.delete(event.id);
+      lastTerminalState.delete(event.id);
       const msg: Message = {
         v: 1,
         id: `evt-${Date.now()}`,
@@ -2989,6 +3039,9 @@ async function processMessage(message: Message): Promise<Response> {
           case "scroll":
             result = handleTerminalScroll(payload);
             break;
+          case "setStreaming":
+            result = handleTerminalSetStreaming(payload);
+            break;
           default:
             throw Object.assign(new Error(`Unknown action: ${ns}.${action}`), { code: "EINVAL" });
         }
@@ -3559,6 +3612,116 @@ function startAiManagerInBackground(): void {
   })();
 }
 
+interface DirectPairingPayload {
+  v: 1;
+  mode: "direct";
+  fqdn: string;
+  port: number;
+  secret: string;
+  ip?: string;
+}
+
+/**
+ * Direct (Tailscale) mode: bind a ws server, advertise {fqdn,port,secret} via
+ * QR, and run the unchanged V2 handshake against the phone. The secret is the
+ * handshake auth key only — it never appears in the URL or logs (the listener
+ * accepts a credential-free upgrade and authenticates inside the handshake).
+ * The existing relay flow is untouched; this is an alternate entry path.
+ */
+async function startDirectMode(): Promise<void> {
+  const ts = await detectTailscale(); // throws TailscaleError with guidance
+  const secret = randomBytes(32).toString("base64url");
+
+  // Bind to the Tailscale interface IP so only tailnet peers can reach the
+  // listener (off-tailnet LAN/localhost peers cannot connect at all).
+  const v4 = ts.ips.find((ip) => ip.includes("."));
+  const bindHost = v4 ?? "0.0.0.0";
+  const wss = new WebSocketServer({ host: bindHost, port: DIRECT_PORT });
+  await new Promise<void>((resolve, reject) => {
+    wss.once("listening", resolve);
+    wss.once("error", reject);
+  });
+  const address = wss.address();
+  const port = typeof address === "object" && address ? address.port : DIRECT_PORT;
+
+  const payload: DirectPairingPayload = {
+    v: 1,
+    mode: "direct",
+    fqdn: ts.fqdn,
+    port,
+    secret,
+    ...(v4 ? { ip: v4 } : {}),
+  };
+
+  console.log(`Direct mode (Tailscale): listening on ${ts.fqdn || v4 || bindHost}:${port}\n`);
+  console.log("Scan this QR in the Lunel app to pair directly:\n");
+  // Render the QR only — do NOT echo the JSON payload as text (it carries the secret).
+  qrcode.generate(JSON.stringify(payload), { small: true }, (qr) => console.log(qr));
+  console.log(`\n  Machine: ${ts.fqdn || v4}    Port: ${port}`);
+  console.log(`  Pairing code (grants access to this machine — share only with your device):`);
+  console.log(`  ${secret}\n`);
+  console.log("Waiting for the app to connect...\n");
+
+  let activeConn: WebSocket | null = null;
+
+  wss.on("connection", (ws) => {
+    if (activeConn) {
+      // v1: one app connection per machine. Reject extras.
+      ws.close(1013, "machine busy");
+      return;
+    }
+    activeConn = ws;
+
+    const transport = new V2SessionTransport({
+      gatewayUrl: "", // unused in direct mode (no dial)
+      password: "", // never sent in direct mode
+      sessionSecret: secret,
+      role: "cli",
+      debugLog: DEBUG_MODE ? debugLog : undefined,
+      handlers: {
+        onSystemMessage: async () => {
+          // In direct mode the CLI emits peer_connected; it receives no relay frames.
+        },
+        onProtocolRequest: async (message) => {
+          return await processMessage(message);
+        },
+        onProtocolResponse: async () => {},
+        onProtocolEvent: async (message) => {
+          await processMessage(message);
+        },
+        onClose: (reason) => {
+          activeConn = null;
+          stopPortSync();
+          cleanupAllTunnels();
+          activeV2Transport = null;
+          if (!shuttingDown) {
+            console.log(`App disconnected (${reason}). Waiting for the app to reconnect...\n`);
+          }
+        },
+      },
+    });
+
+    activeV2Transport = transport;
+    transport
+      .attachServerSocket(ws)
+      .then(() => {
+        console.log("App connected (direct, secure)!\n");
+        startPortSync();
+        void publishDiscoveredPorts(true);
+      })
+      .catch((error) => {
+        console.error(`[direct] handshake failed: ${error instanceof Error ? error.message : String(error)}`);
+        activeConn = null;
+        activeV2Transport = null;
+        try {
+          ws.close();
+        } catch {
+          // ignore
+        }
+      });
+  });
+}
+
 async function connectWebSocketV2(): Promise<void> {
   const gatewayUrl = currentPrimaryGateway;
   if (!currentSessionPassword) {
@@ -3675,6 +3838,24 @@ async function main(): Promise<void> {
   console.log("=".repeat(20) + "\n");
   if (EXTRA_PORTS.length > 0) {
     console.log(`Extra ports enabled: ${EXTRA_PORTS.join(", ")}`);
+  }
+
+  if (DIRECT_MODE) {
+    try {
+      await ensurePtyBinaryReady();
+      await ensureAiCliRuntimes();
+      startAiManagerInBackground();
+      await startDirectMode();
+    } catch (error) {
+      if (error instanceof TailscaleError) {
+        console.error(`\n${error.message}\n`);
+      } else {
+        console.error(`Direct mode failed: ${error instanceof Error ? error.message : String(error)}`);
+        if (DEBUG_MODE && error instanceof Error && error.stack) console.error(error.stack);
+      }
+      gracefulShutdown();
+    }
+    return;
   }
 
   let usedSavedSession = false;

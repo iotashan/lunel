@@ -1,4 +1,4 @@
-import { FlashList } from "@shopify/flash-list";
+import { FlashList, FlashListRef } from "@shopify/flash-list";
 import * as Clipboard from "expo-clipboard";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useTranslation } from "react-i18next";
@@ -866,7 +866,7 @@ export default function ElementsSection({
 }) {
   const { t } = useTranslation();
   const { colors, fonts, radius } = useTheme();
-  const listRef = useRef<FlashList<TreeNode> | null>(null);
+  const listRef = useRef<FlashListRef<TreeNode> | null>(null);
   const lastAppliedFocusTokenRef = useRef(0);
   const pendingRevealPathRef = useRef<string | null>(null);
   const snapshotsByPathRef = useRef<Record<string, DevsoleElementsSnapshot>>({});
@@ -1140,7 +1140,6 @@ export default function ElementsSection({
               onToggleExpand={() => handleToggleExpand(item)}
             />
           )}
-          estimatedItemSize={44}
           contentContainerStyle={{ paddingBottom: 8 }}
           ItemSeparatorComponent={() => (
             <View

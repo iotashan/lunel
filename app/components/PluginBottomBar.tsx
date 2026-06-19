@@ -349,7 +349,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   sheetContainer: {
     flex: 1,

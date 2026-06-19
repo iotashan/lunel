@@ -5,7 +5,7 @@ import InputModal from "@/components/InputModal";
 import { StatusBar } from "expo-status-bar";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { AlertCircle, ArrowLeft, ArrowRight, Info, LoaderCircle, QrCode, Terminal, X } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -35,7 +35,8 @@ import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import * as NavigationBar from "expo-navigation-bar";
 import Svg, { Path, Rect } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useConnection } from "../contexts/ConnectionContext";
+import { useConnection, parseConnectPayload } from "../contexts/ConnectionContext";
+import { useMachineRegistry } from "../contexts/MachineRegistry";
 import { useTranslation } from "react-i18next";
 import ReAnimated, { useAnimatedStyle, useSharedValue, withSpring, withTiming, runOnJS } from "react-native-reanimated";
 import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
@@ -76,6 +77,7 @@ function CopyableCommand({ command, fonts, colors }: { command: string; fonts: R
 
 const LunelConnect = () => {
   const router = useRouter();
+  const { addMachine, setActive, addMode, endAdd, activeMachineId, setMachineTarget } = useMachineRegistry();
   const { colors, fonts, typography } = useTheme();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -140,8 +142,9 @@ const LunelConnect = () => {
 
   useEffect(() => {
     if (Platform.OS === "android") {
-      NavigationBar.setBackgroundColorAsync(BLACK);
-      NavigationBar.setButtonStyleAsync("light");
+      // Edge-to-edge is always on in SDK 56; the navigation bar background is
+      // transparent automatically, so only the button (icon) style is set here.
+      NavigationBar.setStyle("light");
     }
   }, []);
 
@@ -163,10 +166,14 @@ const LunelConnect = () => {
   }, [permission, requestPermission, hasRequestedPermission]);
 
   useEffect(() => {
-    if (status === "connected" && capabilities) {
+    // In add-machine mode the active (machine-0) scope is already connected;
+    // don't bounce back to the workspace — stay so the user can pair another machine.
+    if (status === "connected" && capabilities && !addMode) {
       router.replace("/workspace");
     }
-  }, [status, capabilities, router]);
+  }, [status, capabilities, router, addMode]);
+  // Clear add-mode whenever the connect screen leaves, so a later pairing is normal.
+  useEffect(() => () => endAdd(), [endAdd]);
 
   useEffect(() => {
     const beatLoop = Animated.loop(
@@ -262,7 +269,33 @@ const LunelConnect = () => {
     setIsConnecting(true);
     setError(null);
     try {
+      if (addMode) {
+        // Add-a-machine flow (from the switcher): register a new machine so a
+        // fresh ConnectionHolder (in MachineConnections) mounts + auto-connects,
+        // instead of reconnecting the active one. Primary connect takes the else branch.
+        const target = parseConnectPayload(trimmedCode);
+        if (target.kind === 'relay' && !target.code) {
+          throw new Error(t('lunelConnect.errorConnectionFailed'));
+        }
+        const id = addMachine(target);
+        if (!id) {
+          // Rejected: only one relay machine is supported (shared proxy singleton).
+          endAdd();
+          hasActiveConnectAttemptRef.current = false;
+          setToastMessage('Only one relay machine is supported. Add more machines in direct (Tailscale) mode.');
+          setToastVisible(true);
+          return;
+        }
+        setActive(id);
+        endAdd();
+        hasActiveConnectAttemptRef.current = false;
+        router.replace('/workspace');
+        return;
+      }
       await connect(trimmedCode);
+      // Record the primary machine's mode so the max-one-relay guard accounts for
+      // it when the user later adds machines from the switcher.
+      try { setMachineTarget(activeMachineId ?? '', parseConnectPayload(trimmedCode)); } catch { /* ignore */ }
       hasActiveConnectAttemptRef.current = false;
     } catch (err) {
       hasActiveConnectAttemptRef.current = false;
@@ -288,9 +321,9 @@ const LunelConnect = () => {
       {/* Upper — Camera */}
       <View style={styles.upper}>
         {permission?.granted && (
-          <Animated.View style={[StyleSheet.absoluteFillObject, { opacity: cameraOpacity }]}>
+          <Animated.View style={[StyleSheet.absoluteFill, { opacity: cameraOpacity }]}>
             <CameraView
-              style={StyleSheet.absoluteFillObject}
+              style={StyleSheet.absoluteFill}
               facing="back"
               onCameraReady={() => {
                 Animated.timing(cameraOpacity, {
@@ -328,7 +361,7 @@ const LunelConnect = () => {
               <Svg
                 width={width}
                 height={SCREEN_HEIGHT}
-                style={StyleSheet.absoluteFillObject}
+                style={StyleSheet.absoluteFill}
                 pointerEvents="none"
               >
                 <Path
@@ -381,7 +414,7 @@ const LunelConnect = () => {
                       t('lunelConnect.enterCodeDesc'),
                       [
                         { text: t('common.cancel'), style: "cancel" },
-                        { text: t('common.connect'), onPress: (code) => { if (code?.trim()) handleConnectWithCode(code.trim()); } },
+                        { text: t('common.connect'), onPress: (code?: string) => { if (code?.trim()) handleConnectWithCode(code.trim()); } },
                       ],
                       "plain-text",
                       "",

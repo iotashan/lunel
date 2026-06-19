@@ -6,6 +6,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { logger } from '@/lib/logger';
@@ -20,9 +21,11 @@ import {
   PluginInstance,
   WorkspaceState,
 } from './types';
+import { useMachineRegistry } from '@/contexts/MachineRegistry';
 
 const BOTTOM_BAR_STORAGE_KEY = '@lunel_bottom_bar';
-const WORKSPACE_STORAGE_KEY = '@lunel_workspace';
+// Open tabs + active tab are per-machine (each machine keeps its own tabs).
+const workspaceKeyFor = (machineId: string) => `@lunel_workspace_${machineId}`;
 
 interface PluginContextType {
   // Plugin registry access
@@ -79,6 +82,13 @@ export function PluginProvider({ children }: { children: ReactNode }) {
   const [bottomBarConfig, setBottomBarConfig] = useState<BottomBarConfig>(DEFAULT_BOTTOM_BAR_CONFIG);
   const [drawerContentVariant, setDrawerContentVariant] = useState<"default" | "editor-files">("default");
 
+  // Per-machine workspace: switching the active machine swaps the tab set,
+  // kept warm in-memory (workspacesRef) for instant, flash-free switches.
+  const { activeMachineId } = useMachineRegistry();
+  const machineKey = activeMachineId ?? 'primary';
+  const workspacesRef = useRef<Map<string, { openTabs: PluginInstance[]; activeTabId: string }>>(new Map());
+  const loadedKeyRef = useRef<string | null>(null);
+
   // Get plugins from registry
   const plugins = useMemo(() => pluginRegistry.getAll(), []);
   const corePlugins = useMemo(() => pluginRegistry.getCorePlugins(), []);
@@ -86,122 +96,91 @@ export function PluginProvider({ children }: { children: ReactNode }) {
 
   const getPlugin = useCallback((id: string) => pluginRegistry.get(id), []);
 
-  // Initialize core plugin tabs and load saved state
+  // Load the (global) bottom-bar config once.
   useEffect(() => {
-    async function initialize() {
-      logger.info('plugins', 'initialization started');
-      try {
-        // Load saved bottom bar config
-        const savedBottomBar = await AsyncStorage.getItem(BOTTOM_BAR_STORAGE_KEY);
-        if (savedBottomBar) {
-          try {
-            const parsed = JSON.parse(savedBottomBar);
-            setBottomBarConfig(sanitizeBottomBarConfig({
-              ...DEFAULT_BOTTOM_BAR_CONFIG,
-              ...parsed,
-            }));
-            logger.info('plugins', 'restored bottom bar config');
-          } catch (e) {
-            logger.warn('plugins', 'failed to parse saved bottom bar config', {
-              error: e instanceof Error ? e.message : String(e),
-            });
-          }
+    AsyncStorage.getItem(BOTTOM_BAR_STORAGE_KEY)
+      .then((saved) => {
+        if (!saved) return;
+        try {
+          setBottomBarConfig(sanitizeBottomBarConfig({ ...DEFAULT_BOTTOM_BAR_CONFIG, ...JSON.parse(saved) }));
+        } catch (e) {
+          logger.warn('plugins', 'failed to parse saved bottom bar config', {
+            error: e instanceof Error ? e.message : String(e),
+          });
         }
-
-        // Load saved workspace or create default
-        const savedWorkspace = await AsyncStorage.getItem(WORKSPACE_STORAGE_KEY);
-        if (savedWorkspace) {
-          try {
-            const parsed: WorkspaceState = JSON.parse(savedWorkspace);
-            // Validate tabs - ensure core plugins exist, and refresh titles from registry
-            const validTabs = parsed.openTabs
-              .filter(tab => pluginRegistry.has(tab.pluginId))
-              .map(tab => {
-                const plugin = pluginRegistry.get(tab.pluginId);
-                return { ...tab, title: plugin?.defaultTitle || plugin?.name || tab.title };
-              });
-
-            // Ensure all core plugins have at least one tab
-            const coreTabPluginIds = new Set(
-              validTabs.filter(t => isCorePlugin(t.pluginId)).map(t => t.pluginId)
-            );
-
-            for (const coreId of CORE_PLUGIN_IDS) {
-              if (!coreTabPluginIds.has(coreId)) {
-                const plugin = pluginRegistry.get(coreId);
-                if (plugin) {
-                  validTabs.unshift({
-                    id: generateInstanceId(),
-                    pluginId: coreId,
-                    title: plugin.defaultTitle || plugin.name,
-                  });
-                }
-              }
-            }
-
-            setOpenTabs(validTabs);
-            setActiveTabId(parsed.activeTabId || validTabs[0]?.id || '');
-            logger.info('plugins', 'restored workspace', {
-              tabCount: validTabs.length,
-              activeTabId: parsed.activeTabId || validTabs[0]?.id || '',
-            });
-          } catch (e) {
-            logger.warn('plugins', 'failed to parse saved workspace', {
-              error: e instanceof Error ? e.message : String(e),
-            });
-            initializeDefaultTabs();
-          }
-        } else {
-          initializeDefaultTabs();
-        }
-      } catch (error) {
-        logger.error('plugins', 'failed to load plugin state', {
-          error: error instanceof Error ? error.message : String(error),
-        });
-        initializeDefaultTabs();
-      } finally {
-        logger.info('plugins', 'initialization finished');
-        setIsLoading(false);
-      }
-    }
-
-    function initializeDefaultTabs() {
-      // Create one tab for each core plugin
-      const initialTabs: PluginInstance[] = CORE_PLUGIN_IDS.map(pluginId => {
-        const plugin = pluginRegistry.get(pluginId);
-        return {
-          id: generateInstanceId(),
-          pluginId,
-          title: plugin?.defaultTitle || plugin?.name || pluginId,
-        };
-      }).filter(Boolean);
-
-      setOpenTabs(initialTabs);
-      setActiveTabId(initialTabs[0]?.id || '');
-      logger.info('plugins', 'initialized default tabs', {
-        tabCount: initialTabs.length,
-        pluginIds: initialTabs.map((tab) => tab.pluginId),
-      });
-    }
-
-    initialize();
+      })
+      .catch(() => {});
   }, []);
 
-  // Persist workspace state on changes
+  // Load / switch the per-machine workspace whenever the active machine changes.
+  // Results are cached in workspacesRef so re-switching is instant (no flash).
   useEffect(() => {
-    if (!isLoading && openTabs.length > 0) {
-      const workspace: WorkspaceState = {
-        openTabs,
-        activeTabId,
-        bottomBar: bottomBarConfig,
-      };
-      logger.info('plugins', 'persisting workspace', {
-        tabCount: openTabs.length,
-        activeTabId,
-      });
-      AsyncStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(workspace));
+    function buildDefaultTabs(): PluginInstance[] {
+      return CORE_PLUGIN_IDS.map((pluginId) => {
+        const plugin = pluginRegistry.get(pluginId);
+        return { id: generateInstanceId(), pluginId, title: plugin?.defaultTitle || plugin?.name || pluginId };
+      }).filter(Boolean) as PluginInstance[];
     }
-  }, [openTabs, activeTabId, bottomBarConfig, isLoading]);
+    function validate(parsed: WorkspaceState): { openTabs: PluginInstance[]; activeTabId: string } {
+      const validTabs = parsed.openTabs
+        .filter((tab) => pluginRegistry.has(tab.pluginId))
+        .map((tab) => {
+          const plugin = pluginRegistry.get(tab.pluginId);
+          return { ...tab, title: plugin?.defaultTitle || plugin?.name || tab.title };
+        });
+      const coreIds = new Set(validTabs.filter((t) => isCorePlugin(t.pluginId)).map((t) => t.pluginId));
+      for (const coreId of CORE_PLUGIN_IDS) {
+        if (!coreIds.has(coreId)) {
+          const plugin = pluginRegistry.get(coreId);
+          if (plugin) validTabs.unshift({ id: generateInstanceId(), pluginId: coreId, title: plugin.defaultTitle || plugin.name });
+        }
+      }
+      return { openTabs: validTabs, activeTabId: parsed.activeTabId || validTabs[0]?.id || '' };
+    }
+    const apply = (ws: { openTabs: PluginInstance[]; activeTabId: string }) => {
+      workspacesRef.current.set(machineKey, ws);
+      setOpenTabs(ws.openTabs);
+      setActiveTabId(ws.activeTabId);
+      loadedKeyRef.current = machineKey;
+      setIsLoading(false);
+    };
+
+    const cached = workspacesRef.current.get(machineKey);
+    if (cached) { apply(cached); return; }
+
+    let cancelled = false;
+    setIsLoading(true);
+    AsyncStorage.getItem(workspaceKeyFor(machineKey))
+      .then((saved) => {
+        if (cancelled) return;
+        let ws: { openTabs: PluginInstance[]; activeTabId: string };
+        try {
+          ws = saved ? validate(JSON.parse(saved) as WorkspaceState) : (() => { const t = buildDefaultTabs(); return { openTabs: t, activeTabId: t[0]?.id || '' }; })();
+        } catch {
+          const t = buildDefaultTabs();
+          ws = { openTabs: t, activeTabId: t[0]?.id || '' };
+        }
+        apply(ws);
+        logger.info('plugins', 'loaded workspace', { machineKey, tabCount: ws.openTabs.length });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        const t = buildDefaultTabs();
+        apply({ openTabs: t, activeTabId: t[0]?.id || '' });
+        logger.error('plugins', 'failed to load workspace', { error: error instanceof Error ? error.message : String(error) });
+      });
+    return () => { cancelled = true; };
+  }, [machineKey]);
+
+  // Persist + cache the active machine's workspace. Guard on loadedKeyRef so a
+  // mid-switch render (old tabs, new machineKey) never writes one machine's tabs
+  // into another machine's slot.
+  useEffect(() => {
+    if (isLoading || loadedKeyRef.current !== machineKey || openTabs.length === 0) return;
+    const workspace: WorkspaceState = { openTabs, activeTabId, bottomBar: bottomBarConfig };
+    workspacesRef.current.set(machineKey, { openTabs, activeTabId });
+    AsyncStorage.setItem(workspaceKeyFor(machineKey), JSON.stringify(workspace));
+  }, [openTabs, activeTabId, bottomBarConfig, isLoading, machineKey]);
 
   // Persist bottom bar config
   useEffect(() => {

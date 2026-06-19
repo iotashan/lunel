@@ -444,7 +444,7 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
         'Enter commit message',
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Commit', onPress: (value) => { void handleCommit(value ?? ''); } },
+          { text: 'Commit', onPress: (value?: string) => { void handleCommit(value ?? ''); } },
         ],
         'plain-text'
       );
@@ -623,7 +623,7 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
         'Enter branch name',
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Create', onPress: (value) => { void handleCreateBranch(value ?? ''); } },
+          { text: 'Create', onPress: (value?: string) => { void handleCreateBranch(value ?? ''); } },
         ],
         'plain-text'
       );

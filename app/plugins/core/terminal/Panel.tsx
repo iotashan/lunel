@@ -24,7 +24,13 @@ import {
 } from "@/hooks/useTerminal";
 import * as Haptics from "expo-haptics";
 import * as FileSystem from "expo-file-system/legacy";
-import { Audio } from "expo-av";
+import {
+  useAudioRecorder,
+  useAudioRecorderState,
+  RecordingPresets,
+  AudioModule,
+  setAudioModeAsync,
+} from "expo-audio";
 import {
   ArrowDown,
   ArrowLeft,
@@ -801,6 +807,7 @@ const TerminalToolbar = memo(
     onSendQuickInput: () => void;
     quickInputRef: React.RefObject<TextInput | null>;
   }) => {
+    const { t } = useTranslation();
     const toolbarVerticalPadding = keyboardVisible ? 6 : 8;
     const [quickInputFocused, setQuickInputFocused] = useState(false);
     const micBusySpinSV = useSharedValue(0);
@@ -1347,7 +1354,12 @@ export default function TerminalPanel({
   const [micInputLoading, setMicInputLoading] = useState(false);
   const [quickInputText, setQuickInputText] = useState("");
   const quickInputRef = useRef<TextInput>(null);
-  const micRecordingRef = useRef<Audio.Recording | null>(null);
+  const micRecorder = useAudioRecorder({
+    ...RecordingPresets.HIGH_QUALITY,
+    isMeteringEnabled: true,
+  });
+  const micRecorderState = useAudioRecorderState(micRecorder, 100);
+  const isMicRecordingRef = useRef(false);
   const [micWave, setMicWave] = useState<number[]>(
     () => Array.from({ length: MIC_WAVE_BAR_COUNT }, () => MIC_WAVE_IDLE_LEVEL)
   );
@@ -1370,6 +1382,18 @@ export default function TerminalPanel({
     latestMicLevelRef.current = MIC_WAVE_IDLE_LEVEL;
     setMicWave(Array.from({ length: MIC_WAVE_BAR_COUNT }, () => MIC_WAVE_IDLE_LEVEL));
   }, []);
+
+  // Drive the waveform/duration from real recorder metering while recording
+  useEffect(() => {
+    if (micRecorderState.isRecording) {
+      setMicDurationMs(micRecorderState.durationMillis ?? 0);
+      updateMicEqualizer(
+        typeof micRecorderState.metering === "number" ? micRecorderState.metering : undefined
+      );
+    } else {
+      latestMicLevelRef.current = MIC_WAVE_IDLE_LEVEL;
+    }
+  }, [micRecorderState.isRecording, micRecorderState.durationMillis, micRecorderState.metering, updateMicEqualizer]);
 
   const terminalColors = colors.terminal as Record<string, string>;
 
@@ -1428,10 +1452,11 @@ export default function TerminalPanel({
       }
 
       if (state.title) {
+        const nextTitle = state.title;
         setTabs((prev) =>
           prev.map((tab) =>
-            tab.terminalId === terminalId && tab.title !== state.title
-              ? { ...tab, title: state.title }
+            tab.terminalId === terminalId && tab.title !== nextTitle
+              ? { ...tab, title: nextTitle }
               : tab,
           ),
         );
@@ -1495,9 +1520,9 @@ export default function TerminalPanel({
     setActiveTabId(newId);
     setQuickInputVisible(false);
     setQuickInputText("");
-    if (micRecordingRef.current) {
-      micRecordingRef.current.stopAndUnloadAsync().catch(() => {});
-      micRecordingRef.current = null;
+    if (isMicRecordingRef.current) {
+      isMicRecordingRef.current = false;
+      micRecorder.stop().catch(() => {});
     }
     if (micWaveIntervalRef.current) {
       clearInterval(micWaveIntervalRef.current);
@@ -1527,9 +1552,9 @@ export default function TerminalPanel({
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
       // Stop mic if running
-      if (micRecordingRef.current) {
-        micRecordingRef.current.stopAndUnloadAsync().catch(() => {});
-        micRecordingRef.current = null;
+      if (isMicRecordingRef.current) {
+        isMicRecordingRef.current = false;
+        micRecorder.stop().catch(() => {});
       }
       if (micWaveIntervalRef.current) {
         clearInterval(micWaveIntervalRef.current);
@@ -1773,7 +1798,7 @@ export default function TerminalPanel({
   }, [quickInputVisible, keyboardVisible]);
 
   const startMicRecording = useCallback(async () => {
-    const permission = await Audio.requestPermissionsAsync();
+    const permission = await AudioModule.requestRecordingPermissionsAsync();
     if (!permission.granted) {
       Alert.alert(
         t('terminal.micPermTitle'),
@@ -1781,55 +1806,40 @@ export default function TerminalPanel({
       );
       return;
     }
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: true,
-      playsInSilentModeIOS: true,
+    await setAudioModeAsync({
+      allowsRecording: true,
+      playsInSilentMode: true,
     });
-    const recording = new Audio.Recording();
-    recording.setProgressUpdateInterval(100);
-    recording.setOnRecordingStatusUpdate((status) => {
-      if (!status.isRecording) {
-        latestMicLevelRef.current = MIC_WAVE_IDLE_LEVEL;
-        return;
-      }
-      setMicDurationMs(status.durationMillis ?? 0);
-      updateMicEqualizer(typeof status.metering === "number" ? status.metering : undefined);
-    });
-    await recording.prepareToRecordAsync({
-      ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
-      isMeteringEnabled: true,
-    } as Audio.RecordingOptions);
-    await recording.startAsync();
+    await micRecorder.prepareToRecordAsync();
+    micRecorder.record();
     setMicDurationMs(0);
-    micRecordingRef.current = recording;
-  }, [updateMicEqualizer]);
+    isMicRecordingRef.current = true;
+  }, [micRecorder]);
 
   const stopMicRecording = useCallback(async (): Promise<string | null> => {
-    const recording = micRecordingRef.current;
-    if (!recording) return null;
-    micRecordingRef.current = null;
+    if (!isMicRecordingRef.current) return null;
+    isMicRecordingRef.current = false;
     if (micWaveIntervalRef.current) {
       clearInterval(micWaveIntervalRef.current);
       micWaveIntervalRef.current = null;
     }
     try {
-      await recording.stopAndUnloadAsync();
+      await micRecorder.stop();
     } catch {
       // noop
     }
-    recording.setOnRecordingStatusUpdate(null);
-    const uri = recording.getURI();
+    const uri = micRecorder.uri;
     try {
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
       });
     } catch {
       // noop
     }
     resetMicEqualizer();
     return uri;
-  }, [resetMicEqualizer]);
+  }, [micRecorder, resetMicEqualizer]);
 
   const toggleMicInput = useCallback(() => {
     if (micInputVisible) {
@@ -1908,16 +1918,16 @@ export default function TerminalPanel({
 
   useEffect(() => {
     return () => {
-      if (micRecordingRef.current) {
-        micRecordingRef.current.stopAndUnloadAsync().catch(() => {});
-        micRecordingRef.current = null;
+      if (isMicRecordingRef.current) {
+        isMicRecordingRef.current = false;
+        micRecorder.stop().catch(() => {});
       }
       if (micWaveIntervalRef.current) {
         clearInterval(micWaveIntervalRef.current);
         micWaveIntervalRef.current = null;
       }
     };
-  }, []);
+  }, [micRecorder]);
 
   const renderTerminalTab = useCallback(
     (

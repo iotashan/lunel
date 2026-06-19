@@ -7,7 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "lunel",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "dev.lunel.app",
@@ -24,7 +23,6 @@
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "RECORD_AUDIO"
@@ -55,6 +53,7 @@
         {}
       ],
       "expo-document-picker",
+      "./config-plugins/withFixHotUpdaterMainApplication",
       [
         "@hot-updater/react-native",
         {
@@ -74,7 +73,21 @@
         }
       ],
       "expo-asset",
-      "expo-localization"
+      "expo-localization",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "16.4"
+          },
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
+      "./config-plugins/withMinIosDeploymentTarget",
+      "./config-plugins/withAndroidBrotliDedupe",
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true,
