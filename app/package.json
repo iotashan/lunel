@@ -131,7 +131,7 @@
   "expo": {
     "doctor": {
       "reactNativeDirectoryCheck": {
-        "exclude": ["react-native-libsodium"],
+        "exclude": ["react-native-libsodium", "react-native-tcp-socket"],
         "listUnknownPackages": false
       }
     }
