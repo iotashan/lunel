@@ -53,6 +53,7 @@
         {}
       ],
       "expo-document-picker",
+      "./config-plugins/withFixHotUpdaterMainApplication",
       [
         "@hot-updater/react-native",
         {

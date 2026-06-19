@@ -9,7 +9,8 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "build:editor-webview": "node scripts/build-editor-webview.mjs",
-    "hotupdater:deploy": "hot-updater deploy -i"
+    "hotupdater:deploy": "hot-updater deploy -i",
+    "test": "bun test lib/"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.3",

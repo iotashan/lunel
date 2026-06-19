@@ -15,13 +15,14 @@ const { withMainApplication } = require('expo/config-plugins');
 //
 // which fails `:app:compileDebugKotlin` with "Syntax error: Expecting an element".
 //
-// This plugin runs AFTER hot-updater's (config-plugins apply in array order, and we
-// register this one later in app.json) and repairs the generated Kotlin by inserting
-// the missing comma on the `}` line that immediately precedes the injected
-// `jsBundleFilePath` line. It is a no-op if the comma is already present (so it
-// survives a future hot-updater fix), and it touches nothing when hot-updater did not
-// inject (no `jsBundleFilePath` line). android/ is CNG-regenerated, so this must be a
-// config plugin, not a hand edit.
+// This plugin must run AFTER hot-updater's MainApplication mod. Expo executes
+// same-mod wrappers latest-registered-first (LIFO), so to run last we register this
+// plugin BEFORE "@hot-updater/react-native" in app.json (NOT after). It then repairs
+// the generated Kotlin by inserting the missing comma on the `}` line that
+// immediately precedes the injected `jsBundleFilePath` line. It is a no-op if the
+// comma is already present (so it survives a future hot-updater fix) and touches
+// nothing when hot-updater did not inject. android/ is CNG-regenerated, so this must
+// be a config plugin, not a hand edit.
 module.exports = function withFixHotUpdaterMainApplication(config) {
   return withMainApplication(config, (cfg) => {
     if (cfg.modResults.language !== 'kt') {
@@ -42,9 +43,12 @@ module.exports = function withFixHotUpdaterMainApplication(config) {
     let prevIdx = jsBundleIdx - 1;
     while (prevIdx >= 0 && lines[prevIdx].trim().length === 0) prevIdx -= 1;
     if (prevIdx < 0) return cfg;
-    const prev = lines[prevIdx];
-    const trimmedEnd = prev.replace(/\s+$/, '');
-    if (!trimmedEnd.endsWith(',') && !trimmedEnd.endsWith('(')) {
+    const trimmedEnd = lines[prevIdx].replace(/\s+$/, '');
+    // Only repair the exact known-bad adjacency: the preceding argument is the
+    // `packageList = …apply { }` block, whose value line ends with `}`. Anything
+    // else (already-comma'd, an open paren, some other shape) we leave alone so a
+    // future template/hot-updater change can't make us comma an unrelated line.
+    if (trimmedEnd.endsWith('}')) {
       lines[prevIdx] = `${trimmedEnd},`;
       cfg.modResults.contents = lines.join('\n');
     }
