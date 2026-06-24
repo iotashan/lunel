@@ -242,11 +242,11 @@ function normalizeGateway(input: string): string {
   }
 }
 
-type ConnectTarget =
+export type ConnectTarget =
   | { kind: 'relay'; code: string }
   | { kind: 'direct'; fqdn: string; port: number; secret: string; ip?: string };
 
-function parseConnectPayload(value: string): ConnectTarget {
+export function parseConnectPayload(value: string): ConnectTarget {
   const raw = value.trim();
   if (!raw) return { kind: 'relay', code: '' };
 
